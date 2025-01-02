@@ -1,0 +1,5 @@
+cuda: 1
+load_exp_path: data/exps/2024_11_04_13_54_46_train_llm_peft_PARTS
+sample_dir: data/samples
+embedding_dir: data/embeddings
+# use_projection_module: True
