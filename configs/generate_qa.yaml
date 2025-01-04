@@ -2,13 +2,12 @@
 output_data_dir: data/llm_qa
 use_parts: true
 
-# Description
+# Description / ranking
 open_set_texture: true
 description_qa_train_num: 5000
 description_qa_test_num: 100
 
 # Scenario reasoning
 reference_reasoning_qa_file: /home/user/Documents/octopi-v2/data/llm_qa/test_scenario_qa_1.json
-replace_idx: []
 scenarios: ["guess_touch_from_objects_fruits", "guess_touch_from_objects_balls"]
 scenario_qa_test_num: 120

@@ -17,7 +17,6 @@ reason_llm: False
 
 # Encoder
 use_clip: openai/clip-vit-large-patch14
-# use_clip: openai/clip-vit-large-patch14-336
 frame_size: 224
 adapter_lr: 0.0005
 dim_context_vision: 1024
@@ -33,8 +32,8 @@ prompt_depth_text: 12
 dim_context_text: 768
 gate_prior: 5.
 ## Training
-tasks: ["property_regression", "text_contrastive", "tactile_contrastive"]
-datasets: ["physiclear", "physicleardotted", "hardness", "objectfolder", "schaeffler", "schaefflerdotted"] # tvl
+tasks: ["property_regression", "tactile_contrastive"]
+datasets: ["physiclear", "physicleardotted", "hardness", "objectfolder"]
 num_epochs: 30
 batch_size: 32
 num_distributed_contrastive_batches: 100
@@ -46,14 +45,12 @@ cutoff_len: 1024
 max_new_tokens: 500
 offload_dir: ./
 ## Files
-# train_files: [/home/user/Documents/octopi-v2/data/llm_qa/train_description_comparison_qa.json]
 train_files : []
 test_files: [/home/user/Documents/octopi-v2/data/llm_qa/train_description_comparison_qa_balls.json] # /home/user/Documents/octopi-v2/data/llm_qa/train_description_comparison_qa_fruits.json]
 reasoning_files: [/home/user/Documents/octopi-v2/data/llm_qa/test_scenario_qa_1.json]
 ## Training
 llm_lr: 0.0001
 llm_gradient_accumulation_steps: 16
-# warmup_steps: 0.03
 per_device_batch_size: 1
 ## Testing
 ranking_sampling: True
