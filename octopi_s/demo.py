@@ -85,7 +85,8 @@ if configs["rag"]:
         tactile_vificlip.load_state_dict(torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True), strict=False)
         print("Loaded tactile ViFi-CLIP for RAG!")
     tactile_vificlip.eval()
-    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_train_embeddings(tactile_vificlip, configs, device)
+    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_train_embeddings(configs["embedding_dir"], configs["data_dir"])
+    saved_embeddings = saved_embeddings.to(device)
 else:
     tactile_vificlip = None
     saved_embeddings = None
@@ -525,31 +526,3 @@ def reset_llm_history():
                     if "frames" in os.listdir(part_path):
                         shutil.rmtree(os.path.join(part_path, "frames"))
     return {"status": "done"}
-
-
-# @app.post("/guess_from_touch")
-# def guess_object_given_touches(target_object: str):
-#     task_prompt = f"Among the objects above, which is most likely to be a {target_object}? You must choose one object. Answer in the format 'Object X because...'."
-#     messages = [
-#         {"role": "user", "content": task_prompt}
-#     ]
-#     question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-#     question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, test_configs["frame_size"], image_transforms)
-#     if os.path.exists(embedding_history_path):
-#         prev_embeds = torch.load(embedding_history_path, map_location=torch.device(device_num), weights_only=True)
-#         question_embeds = torch.cat([prev_embeds, question_embeds], dim=1)
-#     generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=test_configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
-#     generation = model.tokenizer.decode(generation_tokens[0]) # https://huggingface.co/docs/transformers/main/llm_tutorial
-#     generation_embeds = model.llm.get_input_embeddings()(generation_tokens)
-#     embeds = torch.cat([question_embeds, generation_embeds], dim=1)
-#     torch.save(embeds, embedding_history_path)
-#     qa = f"### USER: {task_prompt}\n\n### ASSISTANT: {generation}\n\n"
-#     if not os.path.exists(chat_path):
-#         with open(chat_path, "w") as f:
-#             f.write(qa)
-#             f.close()
-#     else:
-#         with open(chat_path, "a") as f:
-#             f.write(qa)
-#             f.close()
-#     return {"response": generation}

@@ -135,48 +135,6 @@ def train_encoder_epoch(configs, loaders, optimizers, models, scaler=None):
             except StopIteration:
                 stop_text_con = True
 
-        if "rgb_contrastive" in configs["tasks"]: # FIXME
-            try:
-                # Task 4: RGB contrastive
-                _, next_rgb_con = next(rgb_con_enum)
-                all_tactile_frames, all_rgb_frames = next_rgb_con
-                batch_size = all_tactile_frames.shape[0]
-                num_rgb_con_samples += batch_size
-                # 4.1: tactile
-                tactile_video_features, _, _, _ = models["tactile_vificlip"](all_tactile_frames.to(device), None, None)
-                if not configs["prompt_learning"]:
-                    tactile_video_features = models["tactile_adapter"](tactile_video_features)
-                # 4.2: RGB
-                rgb_video_features, _, _, _ = models["tactile_vificlip"](all_rgb_frames.to(device), None, None)
-                rgb_video_features = models["rgb_adapter"](rgb_video_features)
-                # 4.3 contrastive loss
-                cos_sim = F.cosine_similarity(tactile_video_features[:,None,:], rgb_video_features[None,:,:], dim=-1) / configs["temperature"]
-                labels = torch.arange(batch_size, dtype=torch.long).to(device)
-                rgb_con_loss = (ce_loss_fn(cos_sim, labels) + ce_loss_fn(cos_sim.T, labels)) / 2
-                total_rgb_con_loss += rgb_con_loss.item() * batch_size
-            except StopIteration:
-                stop_rgb_con = True
-
-        # if "reconstruction" in configs["tasks"]:
-        #     try:
-        #         # Task 5: reconstruction
-        #         _, next_recon = next(recon_enum)
-        #         all_tactile_frames, masked_tactile_frames = next_recon
-        #         all_tactile_frames = all_tactile_frames.view(all_tactile_frames.shape[0]*all_tactile_frames.shape[1], all_tactile_frames.shape[2], all_tactile_frames.shape[3], all_tactile_frames.shape[4])
-        #         batch_size = all_tactile_frames.shape[0]
-        #         num_recon_samples += batch_size
-        #         # 5.1: tactile
-        #         models["tactile_encoder"].model.vision_model = models["tactile_vificlip"].clip_model.vision_model
-        #         masked_tactile_video_features = models["tactile_encoder"](masked_tactile_frames.to(device))
-        #         masked_tactile_video_features = models["tactile_adapter"](masked_tactile_video_features)
-        #         masked_tactile_video_features = masked_tactile_video_features.view(masked_tactile_video_features.shape[0], masked_tactile_video_features.shape[1], masked_tactile_video_features.shape[2])
-        #         recon_tactile_frames = models["tactile_decoder"](masked_tactile_video_features)
-        #         # 5.2: reconstruction loss
-        #         recon_loss = mse_loss_fn(recon_tactile_frames, all_tactile_frames.to(device))
-        #         total_recon_loss += recon_loss.item() * batch_size
-        #     except StopIteration:
-        #         stop_recon = True
-
         # total loss
         loss = 0
         if "property_regression" in configs["tasks"]:
@@ -185,11 +143,6 @@ def train_encoder_epoch(configs, loaders, optimizers, models, scaler=None):
             loss += tactile_con_loss
         if not stop_text_con and "text_contrastive" in configs["tasks"]:
             loss += text_con_loss
-        if not stop_rgb_con and "rgb_contrastive" in configs["tasks"]:
-            loss += rgb_con_loss
-        # if not stop_recon:
-        #     if "reconstruction" in configs["tasks"]:
-        #         loss += recon_loss
         loss.backward()
         if configs["prompt_learning"]:
             optimizers["tactile_vificlip"][0].step()
@@ -523,9 +476,6 @@ def run_encoder(configs, exp_id, g, device, train, test):
         models["property_classifier"] = property_classifier
     os.makedirs(f"{configs['exps_path']}/{exp_id}/viz", exist_ok=True)
     visualize(configs, test_loaders, models, split="test", pca=None, device=device, exp_id=exp_id, train=train, test=test)
-    #     avocado_dataset = TactilePropertyRegressionDataset(image_processor=image_processor, tokenizer=tokenizer, data_path=configs["data_dir"], split_name="avocado", datasets=configs["datasets"], frame_size=configs["frame_size"])
-    #     avocado_loader = DataLoader(avocado_dataset, batch_size=1, shuffle=False, worker_init_fn=seed_worker, generator=g)
-    #     visualize(configs, avocado_loader, tactile_vificlip, tactile_adapter, split="avocado", pca=None)
 
 
 

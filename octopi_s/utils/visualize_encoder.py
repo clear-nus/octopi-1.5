@@ -29,7 +29,6 @@ def visualize(configs, loaders, models, split, pca, device, exp_id, train, test)
         for batch in tqdm.tqdm(prop_reg_loader):
             if "property_regression" in configs["tasks"]:
                 # Task 1: Property classification
-                # _, next_prop_cls = next(prop_cls_enum)
                 all_tactile_frames, properties, dataset = batch
                 all_labels.append(properties.cpu().numpy())
                 batch_size = all_tactile_frames.shape[0]

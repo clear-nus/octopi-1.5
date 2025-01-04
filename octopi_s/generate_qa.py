@@ -21,13 +21,10 @@ def get_property_order(parts, part_indices_map, property, decreasing):
         part_property_pair = part_property_pairs[i]
         order += f"{part_indices_map[part_property_pair[0]]}"
         if i != num_pairs - 1:
-            # NOTE
-            # if part_property_pair[1] == part_property_pairs[i+1][1]:
-            #     order += " >= "
-            # else:
-            #     order += " > "
-            # NOTE
-            order += ", "
+            if part_property_pair[1] == part_property_pairs[i+1][1]:
+                order += " >= "
+            else:
+                order += " > "
     return order
 
 
@@ -233,28 +230,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             "post_instruction": "\nFollow the steps below: 1. Select the surface texture descriptions that help to distinguish between the given options. 2. Give a succinct case for each option using the selected descriptions. 3. Select the best option and format your answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'.",
             "follow_up": "Are the surface tactile properties you mentioned accurate based on common physical characteristics of each object choice's surface? For example, consider its surface texture, material, and how it feels. Correct any inconsistencies or errors. Format your final answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'."
         },
-
-        # "stain_removal": {
-        #     "known_objects": False,
-        #     "target_objects": ["physiclear_microfiber_cloth"],
-        #     "other_properties": [[2,3], [2,3], -1],
-        #     "max_other_objects": 2,
-        #     "prompt": "Which object is most suitable for removing stains from a non-stick pan without scratching it? Select only one most appropriate object for this scenario based on physical property descriptions of the given objects. Use the format 'The most suitable object is x), because xxx'"
-        # },
-        # "wet_grip":{
-        #     "known_objects": False,
-        #     "target_properties": [-1, [2,3], [0,1]],
-        #     "other_properties": [[0,1], [0,1], -1],
-        #     "max_other_objects": 2,
-        #     "prompt": "Which object would be most easily grippable when wet and slippery? Select only one most appropriate object for this scenario based on physical property descriptions of the given objects. Use the format 'The most suitable object is x), because xxx'"
-        # },
-        # "ice_breaking": {
-        #     "known_objects": False,
-        #     "target_properties": [[2,3], -1, -1],
-        #     "other_properties": [[0,1], -1, -1],
-        #     "max_other_objects": 2,
-        #     "prompt": "In an emergency, which of the objects above can be used to break through thin ice covering a car outside? Select only one most appropriate object for this scenario based on physical property descriptions of the given objects. Use the format 'The most suitable object is x), because xxx'"
-        # },
     }
 
     # Load samples
@@ -460,17 +435,15 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
 if __name__ == "__main__":
     run_type = "generate_qa"
     config_path = f'configs/{run_type}.yaml'
-    # get configs
     with open(config_path, 'r') as file:
         configs = yaml.safe_load(file)
+    os.makedirs(configs["output_data_dir"], exist_ok=True)
 
-    # 1) Description and comparison training
-    print("Generating description/comparison QA pairs...")
-    # for split in ["train", "test"]: # NOTE: Original
-    for split in ["train"]:
+    # 1) Description / ranking
+    print("Generating description / ranking QA pairs...")
+    for split in ["train", "test"]:
         json_path = [os.path.join(configs["output_data_dir"], f"{split}_samples.json")]
-        num_samples = configs[f"description_qa_{split}_num"] # NOTE: Original
-        # num_samples = 50
+        num_samples = configs[f"description_qa_{split}_num"]
         generate_description_comparison_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"])
     print("Done!")
 

@@ -63,7 +63,7 @@ def get_physiclear_frames(dataset, tactile_path, frames_output_path):
                     print(f"{j} / {len(dataset_files)} samples extracted for {exploratory_procedure}.")
                 obj_count += 1
             except KeyError:
-                print(object_id)
+                # print(object_id)
                 continue
 
 
@@ -353,14 +353,13 @@ def extract_dataset_spans(dataset, dataset_path, output_path, threshold, min_len
     extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_num)
 
 
-def get_physiclear_samples(data_output_path, train_json_path, val_json_path, test_json_path, avocado_json_path):
+def get_physiclear_samples(data_output_path, train_json_path, val_json_path, test_json_path):
     # Shuffle seen objects before train/val split
     random.shuffle(TRAIN_OBJECTS)
     samples = [i for i in os.listdir(data_output_path) if os.path.isdir(os.path.join(data_output_path, i))]
     train_sample_paths = {}
     val_sample_paths = {}
     test_sample_paths = {}
-    avocado_sample_paths = {}
     for sample in samples:
         try:
             f = open(os.path.join(data_output_path, sample, "data.json"), "r")
@@ -443,6 +442,5 @@ if __name__ == "__main__":
     train_json_path = os.path.join(args.qa_output_path, "train_samples.json")
     val_json_path = os.path.join(args.qa_output_path, "val_samples.json")
     test_json_path = os.path.join(args.qa_output_path, "test_samples.json")
-    avocado_json_path = os.path.join(args.qa_output_path, "avocado_samples.json")
-    get_physiclear_samples(args.frame_output_path, train_json_path, val_json_path, test_json_path, avocado_json_path)
+    get_physiclear_samples(args.frame_output_path, train_json_path, val_json_path, test_json_path)
     print("Done!")

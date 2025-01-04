@@ -6,27 +6,12 @@ from .dataset import get_frames, encode_text, get_dataset_sensor_type
 import os
 from accelerate import infer_auto_device_map, init_empty_weights, dispatch_model
 from accelerate.utils import get_balanced_memory
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, Qwen2VLForConditionalGeneration
 from peft import PeftModel, PeftConfig, get_peft_model, LoraConfig
 
 
 def get_model_details(model_type):
-    if model_type == "vicuna-7b":
-        tokenizer_path = "lmsys/vicuna-7b-v1.5"
-        model_path = "lmsys/vicuna-7b-v1.5"
-        new_tokens = ["<tact_start>", "<tact_end>"]
-        no_split_module_classes = ["LLaMADecoderLayer", "LlamaDecoderLayer"]
-    elif model_type == "vicuna-13b":
-        tokenizer_path = "lmsys/vicuna-13b-v1.5"
-        model_path = "lmsys/vicuna-13b-v1.5"
-        new_tokens = ["<tact_start>", "<tact_end>"]
-        no_split_module_classes = ["LLaMADecoderLayer", "LlamaDecoderLayer"]
-    elif model_type == "llama-3-8b":
-        tokenizer_path = "meta-llama/Meta-Llama-3-8B-Instruct"
-        model_path = "meta-llama/Meta-Llama-3-8B-Instruct"
-        new_tokens = ["<|start_tactile_id|>", "<|end_tactile_id|>"]
-        no_split_module_classes = ["LLaMADecoderLayer", "LlamaDecoderLayer"]
-    elif model_type == "llama-3.1-8b":
+    if model_type == "llama-3.1-8b":
         tokenizer_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
         model_path = "meta-llama/Meta-Llama-3.1-8B-Instruct"
         new_tokens = ["<|start_tactile_id|>", "<|end_tactile_id|>"]
@@ -36,9 +21,9 @@ def get_model_details(model_type):
         model_path = "Qwen/Qwen2.5-7B-Instruct"
         new_tokens = ["<|tactile_start|>", "<|tactile_end|>"]
         no_split_module_classes = ["Qwen2DecoderLayer", "Qwen2MLP"]
-    elif model_type == "qwen2.5-14b":
-        tokenizer_path = "Qwen/Qwen2.5-14B-Instruct"
-        model_path = "Qwen/Qwen2.5-14B-Instruct"
+    elif model_type == "qwen2-vl-7b":
+        tokenizer_path = "Qwen/Qwen2-VL-7B-Instruct"
+        model_path = "Qwen/Qwen2-VL-7B-Instruct"
         new_tokens = ["<|tactile_start|>", "<|tactile_end|>"]
         no_split_module_classes = ["Qwen2DecoderLayer", "Qwen2MLP"]
     return tokenizer_path, model_path, new_tokens, no_split_module_classes
@@ -64,18 +49,17 @@ def load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_c
             if os.path.exists(os.path.join(configs["load_exp_path"], "llm_weights")):
                 model_path = os.path.join(configs["load_exp_path"], "llm_weights")
                 print("Loading trained LLM!")
-        with init_empty_weights():
-            config = AutoConfig.from_pretrained(model_path)
-            auto_model = AutoModelForCausalLM.from_config(config)
-        # f = open(configs["gpu_config"])
-        # data = json.load(f)
+        # with init_empty_weights():
+        #     config = AutoConfig.from_pretrained(model_path)
+        #     auto_model = AutoModelForCausalLM.from_config(config)
         gpu_max_mem_config = {}
         for k, v in gpu_config.items():
             gpu_max_mem_config[int(k)] = v
-        device_map = infer_auto_device_map(
-            auto_model, max_memory = gpu_max_mem_config, no_split_module_classes=no_split_module_classes
-        )
-        llm = AutoModelForCausalLM.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
+        # device_map = infer_auto_device_map(
+        #     auto_model, max_memory = gpu_max_mem_config, no_split_module_classes=no_split_module_classes
+        # )
+        # llm = AutoModelForCausalLM.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
+        llm = Qwen2VLForConditionalGeneration.from_pretrained(model_path, device_map="auto", offload_folder=configs["offload_dir"])
         tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_auth_token=True, padding_side="left")
         print("Loaded LLM and tokenizer!")
         add_new_tokens(llm, tokenizer, new_tokens)
@@ -191,10 +175,13 @@ class MultimodalLLMForCausalLM(nn.Module):
                 tactile_embeds = self.encoder(tactile_frames[tactile_idx].to(self.device))
                 if not self.prompt_learning:
                     tactile_embeds = self.tactile_adapter(tactile_embeds)
-                if get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "plain":
-                    tactile_embeds = self.plain_tactile_adapter(tactile_embeds)
-                elif get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "dotted":
-                    tactile_embeds = self.dotted_tactile_adapter(tactile_embeds)
+                use_adapter = False # NOTE
+                if use_adapter:
+                    if get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "plain":
+                        # tactile_embeds = self.dotted_tactile_adapter(tactile_embeds)
+                        tactile_embeds = self.plain_tactile_adapter(tactile_embeds)
+                    elif get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "dotted":
+                        tactile_embeds = self.dotted_tactile_adapter(tactile_embeds)
                 tact_start_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[0]).to(self.device)), dim=0)
                 tactile_embeds = self.project(tactile_embeds)
                 tact_end_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[1]).to(self.device)), dim=0)
@@ -232,7 +219,6 @@ def process_user_input(user_input, image_processor, model, tokenizer, device, ne
         else:
             inputs[-1] += char
     question_embeds = []
-    from datetime import datetime
     for chunk in inputs:
         if "[" not in chunk and "{" not in chunk:
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, chunk), 0).to(device)))
@@ -240,10 +226,20 @@ def process_user_input(user_input, image_processor, model, tokenizer, device, ne
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, tact_start), 0).to(device)))
             frames, indices = get_frames(chunk[1:-1], image_processor, transforms_image, frame_size=frame_size, train=False, return_indices=True)
             tactile_tensors = torch.unsqueeze(frames, dim=0).to(device) # (1, l, c, h, w)
-            if "[" in chunk:
-                chunk_embeds = model.project(model.plain_tactile_adapter(model.tactile_adapter(model.encoder(tactile_tensors))))
-            elif "{" in chunk:
-                chunk_embeds = model.project(model.dotted_tactile_adapter(model.tactile_adapter(model.encoder(tactile_tensors))))
+            if not model.prompt_learning:
+                if "[" in chunk:
+                    chunk_embeds = model.project(model.plain_tactile_adapter(model.tactile_adapter(model.encoder(tactile_tensors))))
+                elif "{" in chunk:
+                    chunk_embeds = model.project(model.dotted_tactile_adapter(model.tactile_adapter(model.encoder(tactile_tensors))))
+            else:
+                # if "[" in chunk:
+                #     chunk_embeds = model.project(model.plain_tactile_adapter(model.encoder(tactile_tensors)))
+                # elif "{" in chunk:
+                #     chunk_embeds = model.project(model.dotted_tactile_adapter(model.encoder(tactile_tensors)))
+                if "[" in chunk:
+                    chunk_embeds = model.project(model.encoder(tactile_tensors))
+                elif "{" in chunk:
+                    chunk_embeds = model.project(model.encoder(tactile_tensors))
             question_embeds.append(chunk_embeds)
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, tact_end), 0).to(device)))
     question_embeds = torch.cat(question_embeds, dim=1)

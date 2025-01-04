@@ -5,10 +5,6 @@ OBJECTS_WITH_PARTS = {
     'an uncracked, raw egg': [
         'physiclear_egg'
     ],
-    # 'a dishwashing cloth': [
-    #     'physiclear_rug',
-    #     'physiclear_dishwasher_cloth'
-    # ],
     'the numbers on a TSA lock': [
         'physiclear_tsa_lock_numbers'
     ],
@@ -27,10 +23,6 @@ OBJECTS_WITH_PARTS = {
     "a pillow": [
         'physiclear_pillow'
     ],
-    # "a pair of rubber slippers": [
-    #     'physiclear_rubber_slippers',
-    #     'physiclear_rubber_slipper'
-    # ],
     "a filled, disposable water bottle": [
         'physiclear_water_bottle'
     ],
@@ -231,7 +223,6 @@ OBJECTS_WITH_PARTS = {
 
 
 TRAIN_OBJECTS = [
-    # PhysiCLeAR
     'physiclear_scissor_handle',
     'physiclear_rug',
     'physiclear_strainer_base',
@@ -303,7 +294,6 @@ TRAIN_OBJECTS = [
     'physiclear_plush_ball',
     'physiclear_dishwasher_cloth',
     'physiclear_rubber_slipper',
-    # New fruits
     'physiclear_good_apple',
     'physiclear_mango',
     'physiclear_overripe_kiwi',
@@ -418,7 +408,6 @@ OBJECTS_PART_NAMES = {
     'physiclear_overripe_peach': "an unpeeled, overripe peach",
     'physiclear_peach': "an unpeeled, unripe peach",
     'physiclear_plush_ball': "a plush ball",
-    # New fruits
     'physiclear_good_apple': "an unpeeled, ripe apple",
     'physiclear_mango': "an unpeeled, overripe mango",
     'physiclear_overripe_kiwi': "an unpeeled, overripe kiwi",
@@ -512,7 +501,6 @@ OPEN_SET_TEXTURES = {
     'physiclear_overripe_peach': ["slightly firm", "textured", "rounded", "slightly fuzzy", "squishy"],
     'physiclear_peach': ["firm", "textured", "rounded", "slightly fuzzy"],
     'physiclear_plush_ball': ["soft", "fluffy", "slightly textured", "squishy"],
-    # New fruits
     'physiclear_good_apple': ["smooth", "firm", "glossy", "slightly waxy"],
     'physiclear_mango': ["slightly soft", "smooth", "slightly mushy"],
     'physiclear_overripe_kiwi': ["soft", "squishy", "slightly rough", "fuzzy"],
@@ -606,7 +594,6 @@ HARDNESS_RANK_REGRESSION = {
     'physiclear_overripe_peach': 5.33,
     'physiclear_peach': 7,
     'physiclear_plush_ball': 2,
-    # New fruits
     'physiclear_good_apple': 8,
     'physiclear_spoilt_orange': 4.33,
     'physiclear_mango': 5,
@@ -700,7 +687,6 @@ ROUGHNESS_RANK_REGRESSION = {
     'physiclear_overripe_peach': 3.33,
     'physiclear_peach': 3.33,
     'physiclear_plush_ball': 4,
-    # New fruits
     'physiclear_good_apple': 2,
     'physiclear_spoilt_orange': 5.33,
     'physiclear_mango': 3,
