@@ -11,8 +11,6 @@ import random
 import json
 from .physiclear_constants import *
 from torchvision.transforms.functional import crop
-from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data.distributed import DistributedSampler
 from typing import TypeVar, Optional, Iterator
 T_co = TypeVar('T_co', covariant=True)
 
@@ -66,131 +64,6 @@ def regression_collate_fn(data):
     frames = torch.stack(frames)
     properties = torch.stack(properties)
     return frames, properties, datasets
-
-
-class DistributedSampler(DistributedSampler):
-    r"""Sampler that restricts data loading to a subset of the dataset.
-
-    It is especially useful in conjunction with
-    :class:`torch.nn.parallel.DistributedDataParallel`. In such a case, each
-    process can pass a :class:`~torch.utils.data.DistributedSampler` instance as a
-    :class:`~torch.utils.data.DataLoader` sampler, and load a subset of the
-    original dataset that is exclusive to it.
-
-    .. note::
-        Dataset is assumed to be of constant size and that any instance of it always
-        returns the same elements in the same order.
-
-    Args:
-        dataset: Dataset used for sampling.
-        num_replicas (int, optional): Number of processes participating in
-            distributed training. By default, :attr:`world_size` is retrieved from the
-            current distributed group.
-        rank (int, optional): Rank of the current process within :attr:`num_replicas`.
-            By default, :attr:`rank` is retrieved from the current distributed
-            group.
-        shuffle (bool, optional): If ``True`` (default), sampler will shuffle the
-            indices.
-        seed (int, optional): random seed used to shuffle the sampler if
-            :attr:`shuffle=True`. This number should be identical across all
-            processes in the distributed group. Default: ``0``.
-        drop_last (bool, optional): if ``True``, then the sampler will drop the
-            tail of the data to make it evenly divisible across the number of
-            replicas. If ``False``, the sampler will add extra indices to make
-            the data evenly divisible across the replicas. Default: ``False``.
-
-    .. warning::
-        In distributed mode, calling the :meth:`set_epoch` method at
-        the beginning of each epoch **before** creating the :class:`DataLoader` iterator
-        is necessary to make shuffling work properly across multiple epochs. Otherwise,
-        the same ordering will be always used.
-
-    Example::
-
-        >>> # xdoctest: +SKIP
-        >>> sampler = DistributedSampler(dataset) if is_distributed else None
-        >>> loader = DataLoader(dataset, shuffle=(sampler is None),
-        ...                     sampler=sampler)
-        >>> for epoch in range(start_epoch, n_epochs):
-        ...     if is_distributed:
-        ...         sampler.set_epoch(epoch)
-        ...     train(loader)
-    """
-
-    def __init__(self, dataset: Dataset, num_replicas: Optional[int] = None,
-                 rank: Optional[int] = None, shuffle: bool = True,
-                 seed: int = 0, drop_last: bool = False) -> None:
-        if num_replicas is None:
-            if not dist.is_available():
-                raise RuntimeError("Requires distributed package to be available")
-            num_replicas = dist.get_world_size()
-        if rank is None:
-            if not dist.is_available():
-                raise RuntimeError("Requires distributed package to be available")
-            rank = dist.get_rank()
-        if rank >= num_replicas or rank < 0:
-            raise ValueError(
-                f"Invalid rank {rank}, rank should be in the interval [0, {num_replicas - 1}]")
-        self.dataset = dataset
-        self.num_replicas = num_replicas
-        self.rank = rank
-        self.epoch = 0
-        self.drop_last = drop_last
-        # If the dataset length is evenly divisible by # of replicas, then there
-        # is no need to drop any data, since the dataset will be split equally.
-        if self.drop_last and len(self.dataset) % self.num_replicas != 0:  # type: ignore[arg-type]
-            # Split to nearest available length that is evenly divisible.
-            # This is to ensure each rank receives the same amount of data when
-            # using this Sampler.
-            self.num_samples = math.ceil(
-                (len(self.dataset) - self.num_replicas) / self.num_replicas  # type: ignore[arg-type]
-            )
-        else:
-            self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)  # type: ignore[arg-type]
-        self.total_size = self.num_samples * self.num_replicas
-        self.shuffle = shuffle
-        self.seed = seed
-
-    def __iter__(self) -> Iterator[T_co]:
-        if self.shuffle:
-            # deterministically shuffle based on epoch and seed
-            g = torch.Generator()
-            g.manual_seed(self.seed + self.epoch)
-            # TODO: Change this so each batch still has all unique objects from only one dataset when shuffled
-            indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore[arg-type]
-        else:
-            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
-        if not self.drop_last:
-            # add extra samples to make it evenly divisible
-            padding_size = self.total_size - len(indices)
-            if padding_size <= len(indices):
-                indices += indices[:padding_size]
-            else:
-                indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
-        else:
-            # remove tail of data to make it evenly divisible.
-            indices = indices[:self.total_size]
-        assert len(indices) == self.total_size
-        # subsample
-        indices = indices[self.rank:self.total_size:self.num_replicas]
-        assert len(indices) == self.num_samples
-        return iter(indices)
-
-    def __len__(self) -> int:
-        return self.num_samples
-
-    def set_epoch(self, epoch: int) -> None:
-        r"""
-        Set the epoch for this sampler.
-
-        When :attr:`shuffle=True`, this ensures all replicas
-        use a different random ordering for each epoch. Otherwise, the next iteration of this
-        sampler will yield the same ordering.
-
-        Args:
-            epoch (int): Epoch number.
-        """
-        self.epoch = epoch
     
 
 class TactilePropertyRegressionDataset(Dataset):
@@ -234,12 +107,22 @@ class TactilePropertyRegressionDataset(Dataset):
         dataset = random.choice(self.datasets)
         index = index % len(self.tactile[dataset])
         # 2) Get tactile data
-        transforms_list = [
+        # NOTE: Old transforms
+        # transforms_list = [
+        #     transforms.ToTensor(),
+        #     transforms.Resize(self.frame_size, interpolation=3),
+        #     transforms.Normalize(
+        #         mean=[0.48145466, 0.4578275, 0.40821073],
+        #         std=[0.26862954, 0.26130258, 0.27577711]
+        #     )
+        # ]
+        mean, std = get_dataset_img_norm(dataset)
+        transforms_list = [transforms.Resize(self.frame_size, interpolation=3)]
+        transforms_list += [
             transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
             transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
+                mean=mean,
+                std=std
             )
         ]
         if self.split_name == "train":
@@ -250,6 +133,8 @@ class TactilePropertyRegressionDataset(Dataset):
         else:
             transforms_list.append(transforms.CenterCrop(self.frame_size))
         image_transforms = transforms.Compose(transforms_list)
+        # NOTE
+        # 2) Get tactile data
         tactile = self.tactile[dataset][index]
         all_tactile_frames = []
         if self.split_name == "train":
@@ -326,13 +211,6 @@ class TactileTactileContrastiveDataset(Dataset):
                 transforms_list.append(transforms.RandomVerticalFlip(1))
         transforms_list.append(transforms.CenterCrop(self.frame_size))
         image_transforms = transforms.Compose(transforms_list)
-        # tactile_anchor = self.tactile[dataset][index]
-        # all_tactile_frames = []
-        # if self.split_name == "train":
-        #     tactile_frames, _ = get_frames(tactile_anchor, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
-        # else:
-        #     tactile_frames, _ = get_frames(tactile_anchor, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
-        # all_tactile_frames.append(tactile_frames) # [(l, c, h, w)]
         valid_current_object_id = False
         current_object_id = self.object_id[dataset][index]
         # Skip for cases where an object ID only has one tactile sample
@@ -349,10 +227,6 @@ class TactileTactileContrastiveDataset(Dataset):
         else:
             tactile_frames, _ = get_frames(tactile_anchor, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
         all_tactile_frames = [tactile_frames]
-        # similar_tactile = random.choice(self.tactile_by_object_id[dataset][current_object_id])
-        # while tactile_anchor == similar_tactile:
-        #     similar_tactile = random.choice(self.tactile_by_object_id[dataset][current_object_id])
-        #     # print(dataset, index, tactile_anchor, similar_tactile)
         similar_tactile = tactile_set[1]
         if self.split_name == "train":
             tactile_frames, _ = get_frames(similar_tactile, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
@@ -523,254 +397,6 @@ class TactileTactileContrastiveDistributedDataset(Dataset):
             new_tactile = torch.stack([tactile_frames[0]] * (max_frame_length - frame_len), dim=0)
             tactile_frames = torch.cat([new_tactile, tactile_frames], dim=0)
         return tactile_frames, self.all_datasets[index]
-    
-
-class TactileTextContrastiveDataset(Dataset):
-    def __init__(self, image_processor, tokenizer, data_path, split_name, datasets, frame_size, flip_p=0, batch_size=None):
-        super().__init__()
-        self.split_name = split_name
-        self.flip_p = flip_p
-        self.image_processor = image_processor
-        self.tokenizer = tokenizer
-        self.batch_size = batch_size
-        self.tactile = {}
-        self.object_description = {}
-        self.tactile_by_object_description = {}
-        self.datasets = []
-        self.frame_size = frame_size
-        self.num_samples = 0
-        for sample in os.listdir(data_path):
-            sample_dataset = sample.split("_")[0]
-            try:
-                data = json.load(open(os.path.join(data_path, sample + "/data.json"), "r"))
-            except FileNotFoundError:
-                continue
-            if split_name != data['split'] or "tactile" not in os.listdir(os.path.join(data_path, sample)) or sample_dataset not in datasets or "object" not in data.keys():
-                continue
-            if sample_dataset not in self.datasets:
-                self.datasets.append(sample_dataset)
-                self.tactile[sample_dataset] = []
-                self.object_description[sample_dataset] = []
-                self.tactile_by_object_description[sample_dataset] = {}
-            self.num_samples += 1
-            # Save object description depending on dataset
-            description = f"A tactile sensor video of {data['object']}."
-            self.object_description[sample_dataset].append(description)
-            # Save tactile depending on dataset and object description
-            if data["object"] not in self.tactile_by_object_description[sample_dataset].keys():
-                self.tactile_by_object_description[sample_dataset][data["object"]] = [os.path.join(data_path, sample + "/tactile")]
-            else:
-                self.tactile_by_object_description[sample_dataset][data["object"]].append(os.path.join(data_path, sample + "/tactile"))
-            # Save tactile depending on dataset
-            self.tactile[sample_dataset].append(os.path.join(data_path, sample + "/tactile"))
-    
-    def __len__(self): 
-        return self.num_samples
-
-    def __getitem__(self, index):
-        # 1) choose dataset
-        dataset = random.choice(self.datasets)
-        index = index % len(self.tactile[dataset])
-        # 2) Get tactile data and similar object description
-        transforms_list = [
-            transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
-            )
-        ]
-        if self.split_name == "train":
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomHorizontalFlip(1))
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomVerticalFlip(1))
-        transforms_list.append(transforms.CenterCrop(self.frame_size))
-        image_transforms = transforms.Compose(transforms_list)
-        tactile_anchor = self.tactile[dataset][index]
-        all_tactile_frames = []
-        all_descriptions = []
-        if self.split_name == "train":
-            tactile_frames, _ = get_frames(tactile_anchor, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
-        else:
-            tactile_frames, _ = get_frames(tactile_anchor, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
-        all_tactile_frames.append(tactile_frames) # [(l, c, h, w)]
-        current_object_description = self.object_description[dataset][index]
-        description_ids = self.tokenizer(current_object_description, padding=True, return_tensors="pt")
-        description_ids = description_ids["input_ids"][0]
-        all_descriptions.append(description_ids)
-        # 3) Get dissimilar object descriptions
-        other_tactile_frames = []
-        other_descriptions = []
-        object_descriptions = list(self.tactile_by_object_description[dataset].keys())
-        random.shuffle(object_descriptions)
-        for object_description in object_descriptions:
-            if object_description != current_object_description:
-                other_tactile = random.choice(self.tactile_by_object_description[dataset][object_description])
-                if self.split_name == "train":
-                    tactile_frames, _ = get_frames(other_tactile, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
-                else:
-                    tactile_frames, _ = get_frames(other_tactile, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
-                other_tactile_frames.append(tactile_frames)
-                description_ids = self.tokenizer(object_description, padding=True, return_tensors="pt")
-                description_ids = description_ids["input_ids"][0]
-                other_descriptions.append(description_ids)
-            if len(other_tactile_frames) >= self.batch_size - 1:
-                break
-        all_tactile_frames += other_tactile_frames
-        all_descriptions += other_descriptions
-        num_objects = len(all_tactile_frames)
-        max_frame_length = 0
-        for i in range(num_objects):
-            frame_len = all_tactile_frames[i].shape[0]
-            if frame_len > max_frame_length:
-                max_frame_length = frame_len
-        for i in range(num_objects):
-            # Tactile
-            tactile = all_tactile_frames[i]
-            frame_len = tactile.shape[0]
-            if frame_len < max_frame_length:
-                new_tactile = torch.stack([all_tactile_frames[i][0]] * (max_frame_length - frame_len), dim=0)
-                all_tactile_frames[i] = torch.cat([new_tactile, all_tactile_frames[i]], dim=0)
-        all_tactile_frames = torch.stack(all_tactile_frames)
-        all_descriptions = pad_sequence(all_descriptions, batch_first=True)
-        return all_tactile_frames, all_descriptions, dataset
-    
-
-class TactileTextContrastiveDistributedDataset(Dataset):
-    def __init__(self, image_processor, tokenizer, data_path, split_name, datasets, frame_size, flip_p=0, batch_size=None):
-        super().__init__()
-        self.split_name = split_name
-        self.flip_p = flip_p
-        self.image_processor = image_processor
-        self.tokenizer = tokenizer
-        self.batch_size = batch_size
-        self.object_description = {}
-        self.tactile = {}
-        self.tactile_by_object_description = {}
-        self.object_description_ids = {}
-        self.datasets = []
-        self.frame_size = frame_size
-        self.num_samples = 0
-        self.all_tactile_text = []
-        self.all_datasets = []
-        self.skipped_datasets = {}
-        for sample in os.listdir(data_path):
-            sample_dataset = sample.split("_")[0]
-            try:
-                data = json.load(open(os.path.join(data_path, sample + "/data.json"), "r"))
-            except FileNotFoundError:
-                continue
-            if split_name != data['split'] or "tactile" not in os.listdir(os.path.join(data_path, sample)) or sample_dataset not in datasets or "object" not in data.keys():
-                continue
-            if sample_dataset not in self.datasets:
-                self.datasets.append(sample_dataset)
-                self.object_description[sample_dataset] = []
-                self.tactile[sample_dataset] = []
-                self.tactile_by_object_description[sample_dataset] = {}
-                self.object_description_ids[sample_dataset] = []
-            self.num_samples += 1
-            # Save object description depending on dataset
-            description = f"A tactile sensor video of {data['object']}."
-            self.object_description[sample_dataset].append(description)
-            description_id = self.tokenizer(description, padding=True, return_tensors="pt")
-            description_id = description_id["input_ids"][0]
-            # Save object description tensor depending on dataset
-            self.object_description_ids[sample_dataset].append(description_id)
-            # Save tactile depending on dataset and object description
-            if data["object"] not in self.tactile_by_object_description[sample_dataset].keys():
-                self.tactile_by_object_description[sample_dataset][description] = [os.path.join(data_path, sample + "/tactile")]
-            else:
-                self.tactile_by_object_description[sample_dataset][description].append(os.path.join(data_path, sample + "/tactile"))
-            # Save tactile depending on dataset
-            self.tactile[sample_dataset].append(os.path.join(data_path, sample + "/tactile"))
-        for k, v in self.object_description_ids.items():
-            self.object_description_ids[k] = pad_sequence(v, batch_first=True)
-
-        # Fill up samples based on batch size
-        num_batches = 100
-        for i in range(num_batches):
-            # 1) Choose dataset
-            dataset = random.choice(self.datasets)
-            index = random.randint(0, len(self.object_description[dataset])-1)
-            valid_current_object_description = False
-            current_object_description = self.object_description[dataset][index]
-            while not valid_current_object_description:
-                # 2) Get tactile data
-                try:
-                    tactile_set = random.sample(self.tactile_by_object_description[dataset][current_object_description], 1)
-                    valid_current_object_description = True
-                except ValueError:
-                    index += 1
-                    current_object_description = self.object_description[dataset][index]
-            tactile_batch = [tactile_set[0], self.object_description_ids[dataset][index]]
-            # 3) Get dissimilar tactile data
-            object_descriptions = list(self.tactile_by_object_description[dataset].keys())
-            random.shuffle(object_descriptions)
-            for object_description in object_descriptions:
-                if object_description != current_object_description:
-                    try:
-                        tactile_set = random.sample(self.tactile_by_object_description[dataset][object_description], 1)
-                    except ValueError:
-                        continue
-                    tactile_batch.append(tactile_set[0])
-                    # Pad description if necessary
-                    max_description_length = self.object_description_ids[dataset].shape[-1]
-                    description_id = self.tokenizer(object_description, padding=True, return_tensors="pt")
-                    description_id = description_id["input_ids"][0]
-                    if len(description_id) < max_description_length:
-                        len_diff = max_description_length - len(description_id)
-                        description_id = torch.cat([description_id, torch.tensor([0] * len_diff)], dim=-1)
-                    tactile_batch.append(description_id)
-                if len(tactile_batch) >= self.batch_size * 2:
-                    break
-            if len(tactile_batch) < self.batch_size * 2:
-                if dataset not in self.skipped_datasets.keys():
-                    self.skipped_datasets[dataset] = int(len(tactile_batch) / 2)
-                elif int(len(tactile_batch) / 2) > self.skipped_datasets[dataset]:
-                    self.skipped_datasets[dataset] = int(len(tactile_batch) / 2)
-                continue
-            else:
-                self.all_tactile_text += tactile_batch
-                self.all_datasets += [dataset] * len(tactile_batch)
-        print("Tactile-text contrastive all processed datasets:", set(self.datasets))
-        print("Tactile-text contrastive skipped datasets:", self.skipped_datasets)
-    
-    def __len__(self): 
-        return len(self.all_tactile_text)
-
-    def __getitem__(self, index):
-        transforms_list = [
-            transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
-            )
-        ]
-        if self.split_name == "train":
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomHorizontalFlip(1))
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomVerticalFlip(1))
-        transforms_list.append(transforms.CenterCrop(self.frame_size))
-        image_transforms = transforms.Compose(transforms_list)
-        tactile_or_text = self.all_tactile_text[index]
-        if type(tactile_or_text) == str:
-            # Tactile
-            if self.split_name == "train":
-                tactile_frames, _ = get_frames(tactile_or_text, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
-            else:
-                tactile_frames, _ = get_frames(tactile_or_text, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
-            max_frame_length = 10
-            frame_len = tactile_frames.shape[0]
-            if frame_len < max_frame_length:
-                new_tactile = torch.stack([tactile_frames[0]] * (max_frame_length - frame_len), dim=0)
-                tactile_frames = torch.cat([new_tactile, tactile_frames], dim=0)
-            return tactile_frames, "tactile", self.all_datasets[index]
-        else:
-            # Text
-            return tactile_or_text, "text", self.all_datasets[index]
 
 
 class TactileLLMDataset(Dataset):
@@ -810,23 +436,6 @@ class TactileLLMDataset(Dataset):
 
     def __getitem__(self, index):
         # 1) Get sample question, answer and tactile path(s)
-        # NOTE: ignore BOS tokens
-        transforms_list = [
-            transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
-            )
-        ]
-        if self.split_name == "train":
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomHorizontalFlip(1))
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomVerticalFlip(1))
-        else:
-            transforms_list.append(transforms.CenterCrop(self.frame_size))
-        transforms_image = transforms.Compose(transforms_list)
         sample = self.samples[index]
         tactile = sample["info"]["tactile"]
         all_objects_dict = sample["info"]["objects"]
@@ -836,16 +445,17 @@ class TactileLLMDataset(Dataset):
         all_indices = []
         all_datasets = []
         for t in tactile:
+            dataset = t.split("/")[-2].split("_")[0]
+            image_transforms = get_image_transforms(self.frame_size, dataset, split_name=self.split_name, flip_p=self.flip_p)
             if self.split_name == "train":
-                frames, indices = get_frames(t, self.image_processor, transforms_image, frame_size=self.frame_size, train=True, return_indices=True)
+                frames, indices = get_frames(t, self.image_processor, image_transforms, frame_size=self.frame_size, train=True, return_indices=True)
             else:
-                frames, indices = get_frames(t, self.image_processor, transforms_image, frame_size=self.frame_size, train=False, return_indices=True)
+                frames, indices = get_frames(t, self.image_processor, image_transforms, frame_size=self.frame_size, train=False, return_indices=True)
                 if self.rag:
                     obj_name_description_map = get_rag_tactile_paths(frames, self.tactile_vificlip, self.saved_embeddings, self.sample_tactile_paths, self.object_ids, self.device, retrieval_object_num=self.retrieval_object_num)
                     rag_outputs.append(obj_name_description_map)
             tactile_frames.append(frames)
             all_indices.append(indices)
-            dataset = t.split("/")[-2].split("_")[0]
             all_datasets.append(dataset)
         if "scenario" in sample["info"].keys():
             # Scenario reasoning
@@ -868,7 +478,8 @@ class TactileLLMDataset(Dataset):
 def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
-    tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None)
+    sensors = [get_dataset_sensor_type("physiclear")] # FIXME
+    tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
     similarities = cos(saved_embeddings, tactile_video_features)
     similarities_topk = torch.topk(similarities, k=retrieval_object_num)
     similar_objects = [object_ids[i] for i in similarities_topk.indices]
@@ -887,8 +498,89 @@ def encode_text(tokenizer, text):
     return tokens
 
 
+def old_get_dataset_sensor_type(dataset):
+    dataset_sensor_map = {
+        "feelang": "plain",
+        "hardness": "dotted",
+        "objectfolder": "plain",
+        "physiclear": "plain",
+        "physicleardotted": "dotted",
+        "schaeffler": "plain",
+        "schaefflerdotted": "dotted",
+        "tvl": "plain"
+    }
+    return dataset_sensor_map[dataset]
+
+
 def get_dataset_sensor_type(dataset):
-    if dataset == "physiclear" or dataset == "objectfolder":
-        return "plain"
-    elif dataset == "physicleardotted" or dataset == "hardness":
-        return "dotted"
+    dataset_sensor_map = {
+        "feelang": "gelsightmini",
+        "hardness": "gelsight17",
+        "objectfolder": "gelsight",
+        "physiclear": "gelsightmini",
+        "physicleardotted": "gelsightminidotted",
+        "schaeffler": "gelsightmini",
+        "schaefflerdotted": "gelsightminidotted",
+        "tvl": "digit"
+    }
+    return dataset_sensor_map[dataset]
+
+
+def get_dataset_img_norm(dataset):
+    # CLIP
+    # mean=[0.48145466, 0.4578275, 0.40821073],
+    # std=[0.26862954, 0.26130258, 0.27577711]
+    sensor = get_dataset_sensor_type(dataset)
+    dataset_img_norm_map = {
+        "gelsight": {
+            "mean": [0.46640, 0.44838, 0.45375],
+            "std": [0.08117, 0.07227, 0.085867],
+        },
+        "gelsightmini": {
+            "mean": [0.20954, 0.37124, 0.40463],
+            "std": [0.12138, 0.06335, 0.10677],
+        },
+        "gelsightminidotted": {
+            "mean": [0.20251, 0.36450, 0.40409],
+            "std": [0.12902, 0.08006, 0.11987],
+        },
+        "gelsight17": {
+            "mean": [0.42487, 0.41575, 0.43780],
+            "std": [0.06776, 0.06513, 0.06871],
+        },
+        "digit": {
+            "mean": [0.41146, 0.42410, 0.39767],
+            "std": [0.15062, 0.08714, 0.08073],
+        },
+    }
+    return dataset_img_norm_map[sensor]["mean"], dataset_img_norm_map[sensor]["std"]
+
+
+def get_image_transforms(frame_size, dataset, split_name, flip_p):
+    transforms_list = [
+            transforms.ToTensor(),
+            transforms.Resize(frame_size, interpolation=3),
+            transforms.Normalize(
+                mean=[0.48145466, 0.4578275, 0.40821073],
+                std=[0.26862954, 0.26130258, 0.27577711]
+            )
+        ]
+    if split_name == "train":
+        if random.random() < flip_p:
+            transforms_list.append(transforms.RandomHorizontalFlip(1))
+        if random.random() < flip_p:
+            transforms_list.append(transforms.RandomVerticalFlip(1))
+    else:
+        transforms_list.append(transforms.CenterCrop(frame_size))
+    # transforms_list = [transforms.Resize(frame_size, interpolation=3)]
+    # mean, std = get_dataset_img_norm(dataset)
+    # transforms_list += [
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(
+    #         mean=mean,
+    #         std=std
+    #     )
+    # ]
+    # transforms_list.append(transforms.CenterCrop(frame_size))
+    image_transforms = transforms.Compose(transforms_list)
+    return image_transforms

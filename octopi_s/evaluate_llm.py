@@ -132,7 +132,7 @@ if __name__ == "__main__":
         f.close()
 
     if "/reason/" in args.llm_preds_path:
-        # Reasoning
+        # Scenario reasoning
         reasoning_accuracy = evaluate_reasoning(data)
         print(f"\nReasoning accuracy: {reasoning_accuracy}")
     else:

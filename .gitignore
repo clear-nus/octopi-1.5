@@ -169,6 +169,7 @@ offload/
 *.out
 *.png
 *.pt
+*.ipynb
 
 data/
 data_backup/

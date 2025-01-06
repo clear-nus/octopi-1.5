@@ -60,7 +60,7 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
             get_description = True
         else:
             get_description = random.choice([True, False])
-        decreasing = True # FIXME
+        decreasing = True
         # NOTE
         # get_description = True
         # get_order = True
@@ -109,7 +109,6 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
         part_indices_map = {}
         part_count = 0
         for i, obj in enumerate(objects):
-            # TODO: Get tactile videos based on exploratory procedures
             if use_parts:
                 num_parts = random.randint(1, 2)
             else:
@@ -175,10 +174,6 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
         if get_order:
             hardness_order = get_property_order(all_parts, part_indices_map, "hardness", decreasing)
             roughness_order = get_property_order(all_parts, part_indices_map, "roughness", decreasing)
-            # if decreasing:
-            #     answer.append(f"Object parts ranked in decreasing hardness: {hardness_order}.\nObject parts ranked in decreasing roughness: {roughness_order}.")
-            # else:
-            #     answer.append(f"Object parts ranked in increasing hardness: {hardness_order}.\nObject parts ranked in increasing roughness: {roughness_order}.")
             if decreasing:
                 answer.append(f"Object parts ranked in decreasing hardness: {hardness_order}\nObject parts ranked in decreasing roughness: {roughness_order}")
             else:
@@ -194,8 +189,7 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
         all_data.append(data)
     # Save all data
     file_name = "description_comparison_qa"
-    # NOTE
-    # data_file = open(os.path.join(data_dir, f"{split}_{file_name}_{collection}.json"), "w")
+    # data_file = open(os.path.join(data_dir, f"{split}_{file_name}_{collection}.json"), "w") # NOTE
     data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w") # Original
     json.dump(all_data, data_file, indent=4) 
     data_file.close()
@@ -203,14 +197,6 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
 
 def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, open_set_texture, use_parts, scenario_qa_id):
     scenario_info = {
-        # "guess_object_from_touches": {
-        #     "target": ["a new baseball's seams", "a new tennis ball", "a stress ball"],
-        #     "all_candidate_samples": ["physiclear_baseball_seams", "physiclear_tennis_ball", "physiclear_stress_ball"],
-        #     "pre_instruction": "",
-        #     "question": "Which among Object 1, 2, or 3 is ",
-        #     "post_instruction": "\n\nAnswer in the form 'Object X because ' and explain why using the salient parts of the surface texture descriptions and rankings.",
-        #     "follow_up": ""
-        # },
         "guess_touch_from_objects_balls": {
             "target_sample": ["physiclear_baseball_seams", "physiclear_tennis_ball", "physiclear_stress_ball"],
             "all_candidate": ["a new baseball's seams", "a tennis ball", "a stress ball"],
@@ -218,9 +204,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             "question": "Task: Determine which option the above object is likely to be: ",
             "post_instruction": "\nFollow the steps below: 1. Select the surface texture descriptions that help to distinguish between the given options. 2. Give a succinct case for each option using the selected descriptions. 3. Select the best option and format your answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'.",
             "follow_up": "Are the surface tactile properties you mentioned accurate based on common physical characteristics of each object choice's surface? For example, consider its surface texture, material, and how it feels. Correct any inconsistencies or errors. Format your final answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'."
-            # "pre_instruction": "Read the question, analyze step by step, provide your answer, confidence and request for information in this answer. Note: The confidence indicates how likely you think your answer is true.\n\nUse the following format to answer:\n\n'Explanation: [insert step-by-step analysis here]\nAnswer:\nG1: [ONLY the option letter; not a complete sentence], P1: [Your confidence level, please only include the numerical number in the range of 0-100]%\n...\nGk: [ONLY the option letter; not a complete sentence], Pk: [Your confidence level, please only include the numerical number in the range of 0-100]%\nRequest for information: [Clarify any of the given texture descriptions and/or request for more descriptions if you are unsure]'\n\n",
-            # "question": "Question: Determine which option the above object is: ",
-            # "post_instruction": "\n\nNow, please answer this question and provide your confidence level. Let's think it step by step."
         },
         "guess_touch_from_objects_fruits": {
             "target_sample": ["physiclear_good_apple", "physiclear_orange", "physiclear_spoilt_apple"],
@@ -311,7 +294,7 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
         candidate = candidate_value[random_idx]
         candidate_samples = True if "samples" in candidate_key else False
 
-        # 2) Get description and/or comparison and reasoning answers
+        # 2) Get description / ranking and reasoning answers
         if num_objects > 1 and candidate_samples:
             candidates = candidate_value.copy()
             chosen_objects_shuffled_index = [i for i in range(num_objects)]
@@ -324,14 +307,11 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             all_objects = [target]
             options = ["A)", "B)", "C)", "D)"]
             reasoning_answer = options[random_idx] + " " + candidate
-        # FIXME?
         if tuple(all_tactile) in existing[scenario]:
             exist = True
             continue
         else:
             existing[scenario].append(tuple(all_tactile))
-        
-        # TODO: Vary description and ranking requests?
         if num_objects == 1:
             question = ["Describe the object in the following tactile video(s).\n\n"]
         else:
@@ -350,8 +330,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
                     if open_set_texture:
                         random.shuffle(OPEN_SET_TEXTURES[obj])
                         description = ", ".join(OPEN_SET_TEXTURES[obj])
-                    # else:
-                    #     description = TEXTURES[obj][0]
                     answer.append(f"Object {i+1}: {description}.")
                     if i != len(candidates) - 1:
                         answer.append("\n")
@@ -365,8 +343,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
                 if open_set_texture:
                     random.shuffle(OPEN_SET_TEXTURES[target])
                     description = ", ".join(OPEN_SET_TEXTURES[target])
-                # else:
-                #     description = TEXTURES[obj][0]
             all_objects_dict[f"Object 1"] = target
         data["info"]["tactile"] = all_tactile
         data["info"]["objects"] = all_objects_dict
@@ -382,7 +358,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             answer = "Object 1: " + description + "."
         data["chat"].append({
             "role": "user",
-            # "context": None,
             "content": "".join(question)
         })
         data["chat"].append({
@@ -398,11 +373,8 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
                     scenario_question += f"{options[i]} {candidate_value[i]}, "
                 else:
                     scenario_question += f"{options[i]} {candidate_value[i]}?"
-                    # scenario_question += f"{options[i]} {candidate_value[i]}, {options[i+1]} none of the above?"
-                    # scenario_question += f"{options[i]} {candidate_value[i]}, {options[i+1]} unsure?"
         data["chat"].append({
             "role": "user",
-            # "context": None,
             "content": scenario_info[scenario]["pre_instruction"] + scenario_question + scenario_info[scenario]["post_instruction"],
         })
         data["chat"].append({
@@ -412,7 +384,6 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
         if "follow_up" in scenario_info[scenario].keys():
             data["chat"].append({
                 "role": "user",
-                # "context": None,
                 "content": scenario_info[scenario]["follow_up"],
             })
             data["chat"].append({

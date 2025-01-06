@@ -17,3 +17,5 @@ matplotlib
 seaborn
 fastapi[all]
 openai
+scikit-learn
+qwen_vl_utils

@@ -1,15 +1,15 @@
 from typing import Union
 from fastapi import FastAPI
-from torchvision import transforms
 import matplotlib.pyplot as plt
 import torch
 import natsort
 import cv2 as cv
 import yaml, os
 import torch, os, yaml
+from utils.encoder import *
 from utils.llm import *
 from utils.dataset import get_rag_tactile_paths
-from transformers import CLIPImageProcessor
+from transformers import CLIPImageProcessor, AutoProcessor
 from transformers.utils import logging
 from fastapi.responses import Response
 import numpy as np
@@ -21,6 +21,8 @@ import random
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+from qwen_vl_utils import process_vision_info
+import warnings
 
 
 # API
@@ -29,7 +31,7 @@ logging.set_verbosity_error()
 
 # Load models
 run_type = f"demo"
-demo_config_path = f'/home/user/Documents/octopi-v2/configs/{run_type}.yaml'
+demo_config_path = f'../configs/{run_type}.yaml'
 demo_configs = yaml.safe_load(open(demo_config_path))
 device_num = demo_configs["cuda"]
 device = f'cuda:{device_num}'
@@ -49,25 +51,6 @@ end = datetime.now()
 elapsed = (end - start).total_seconds()
 print(f"Loaded model in {elapsed} seconds.")
 
-# Video processing
-transforms_list = [
-    transforms.ToTensor(),
-    transforms.Resize(configs["frame_size"], interpolation=3),
-    transforms.Normalize(
-        mean=[0.48145466, 0.4578275, 0.40821073],
-        std=[0.26862954, 0.26130258, 0.27577711]
-    ),
-    transforms.CenterCrop(configs["frame_size"])
-]
-image_transforms = transforms.Compose(transforms_list)
-inverse_transforms_list = [
-    transforms.Normalize(
-        mean=[-0.48145466/0.26862954, -0.4578275/0.26130258, -0.40821073/0.27577711],
-        std=[1/0.26862954, 1/0.26130258, 1/0.27577711]
-    ),
-]
-inverse_transforms = transforms.Compose(inverse_transforms_list)
-
 # Settings
 demo_path = configs["demo_path"]
 embedding_history_path = configs["embedding_history_path"]
@@ -84,8 +67,10 @@ if configs["rag"]:
     if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
         tactile_vificlip.load_state_dict(torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True), strict=False)
         print("Loaded tactile ViFi-CLIP for RAG!")
+    else:
+        warnings.warn("No trained tactile ViFi-CLIP model found for RAG!")
     tactile_vificlip.eval()
-    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_train_embeddings(configs["embedding_dir"], configs["data_dir"])
+    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(configs["embedding_dir"], configs["data_dir"])
     saved_embeddings = saved_embeddings.to(device)
 else:
     tactile_vificlip = None
@@ -93,10 +78,10 @@ else:
     sample_tactile_paths = None
     object_ids = None
 
-# ChatGPT configs
-load_dotenv(configs["dotenv_path"])
-YOUR_ORG_ID = os.environ.get("OPENAI_ORG_ID")
-YOUR_API_KEY = os.environ.get("OPENAI_API_KEY")
+# # ChatGPT configs
+# load_dotenv(configs["dotenv_path"])
+# YOUR_ORG_ID = os.environ.get("OPENAI_ORG_ID")
+# YOUR_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_len, top_frame_num):
@@ -287,6 +272,7 @@ def get_tactile_embeds(demo_path, object_ids, describe, rank):
         for q in range(len(question)):
             if question[q] == "<tact_tokens>":
                 # NOTE: Assume no dotted samples
+                sensors = [get_dataset_sensor_type_old]
                 tactile_path = tactile_paths_flattened[tactile_count]
                 if configs["rag"] and describe:
                     tactile_frames, _ = get_frames(tactile_path, None, image_transforms, frame_size=configs["frame_size"], train=False, return_indices=True)
@@ -429,33 +415,79 @@ def describe_rank_objects(object_ids: str, property_type: Union[str, None] = Non
     return response_json
 
 
+# @app.post("/describe_rgb")
+# def describe_rgb(prompt: str):
+#     # NOTE: Does not save into chat history or embedding history, only for demo purposes on the UI
+#     def encode_image(image_path):
+#         with open(image_path, "rb") as image_file:
+#             return base64.b64encode(image_file.read()).decode("utf-8")
+
+#     model = configs["openai_model"]
+#     image_path = configs["image_path"]
+#     client = OpenAI(
+#         organization=YOUR_ORG_ID,
+#         api_key=YOUR_API_KEY,
+#     )
+#     base64_image = encode_image(image_path)
+#     completion = client.chat.completions.create(
+#         model=model,
+#         messages=[
+#             {"role": "user", "content": [
+#                 {"type": "text", "text": prompt},
+#                 {"type": "image_url", "image_url": {
+#                     "url": f"data:image/png;base64,{base64_image}"}
+#                 }
+#             ]}
+#         ],
+#         temperature=0.0
+#     )
+#     generation = completion.choices[0].message.content
+#     response = {
+#         "generation": generation,
+#     }
+#     objects = generation.split("Object 1")[-1].split("\n")
+#     final_objects = []
+#     for obj in objects:
+#         final_objects.append(obj.split(":")[-1].strip()[:-1].lower())
+#     response["objects"] = final_objects
+#     return {"response": response}
+
+
 @app.post("/describe_rgb")
 def describe_rgb(prompt: str):
     # NOTE: Does not save into chat history or embedding history, only for demo purposes on the UI
-    def encode_image(image_path):
-        with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode("utf-8")
-
-    model = configs["openai_model"]
-    image_path = configs["image_path"]
-    client = OpenAI(
-        organization=YOUR_ORG_ID,
-        api_key=YOUR_API_KEY,
-    )
-    base64_image = encode_image(image_path)
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "user", "content": [
+    processor = AutoProcessor.from_pretrained("Qwen/Qwen2-VL-7B-Instruct")
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "image": configs["image_path"],
+                },
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {
-                    "url": f"data:image/png;base64,{base64_image}"}
-                }
-            ]}
-        ],
-        temperature=0.0
+            ],
+        }
+    ]
+
+    # Preparation for inference
+    text = processor.apply_chat_template(
+        messages, tokenize=False, add_generation_prompt=True
     )
-    generation = completion.choices[0].message.content
+    image_inputs, video_inputs = process_vision_info(messages)
+    inputs = processor(
+        text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt",
+    )
+    inputs = inputs.to(device)
+    generated_ids = model.llm.generate(**inputs, max_new_tokens=128)
+    generated_ids_trimmed = [
+        out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
+    ]
+    generation = processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
     response = {
         "generation": generation,
     }

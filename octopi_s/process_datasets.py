@@ -291,7 +291,7 @@ def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_nu
     sample_count = 0
     num_samples = len([i for i in os.listdir(output_path) if dataset in i])
     for sample in os.listdir(output_path):
-        if dataset in sample:
+        if dataset == sample.split("_")[0]:
             sample_count += 1
             sample_path = os.path.join(output_path, sample)
             sample_frames = natsort.natsorted(os.path.join(sample_path, "tactile", i) for i in os.listdir(os.path.join(sample_path, "tactile")))
@@ -413,9 +413,9 @@ def get_physiclear_samples(data_output_path, train_json_path, val_json_path, tes
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset_path', default="octopi_s/data/tactile_datasets", help='directory with tactile dataset files')
-    parser.add_argument('--frame_output_path', default="octopi_s/data/samples", help='directory to save processed frames and sample files')
-    parser.add_argument('--qa_output_path', default="octopi_s/data/llm_qa", help='directory to save LLM QA pairs')
+    parser.add_argument('--dataset_path', default="data/tactile_datasets", help='directory with tactile dataset files')
+    parser.add_argument('--frame_output_path', default="data/samples", help='directory to save processed frames and sample files')
+    parser.add_argument('--qa_output_path', default="data/llm_qa", help='directory to save LLM QA pairs')
     args = parser.parse_args()
     os.makedirs(args.frame_output_path, exist_ok=True)
     os.makedirs(args.qa_output_path, exist_ok=True)
@@ -437,7 +437,7 @@ if __name__ == "__main__":
         extract_dataset_spans(dataset, args.dataset_path, args.frame_output_path, threshold, min_len, max_len, top_frame_num)
     print("Done!")
 
-    # 2) Create samples for each PhysiCLeAR set
+    # 2) Store PhysiCLeAR sample paths
     print(f"\nGetting sample files...")
     train_json_path = os.path.join(args.qa_output_path, "train_samples.json")
     val_json_path = os.path.join(args.qa_output_path, "val_samples.json")

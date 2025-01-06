@@ -1,22 +1,23 @@
-# Paths
+# General
+gpu_config: configs/gpu_config.json
+cuda: 0
+load_exp_path: /home/user/Documents/octopi-s/data/exps/2025_01_04_21_23_26_train_llm_train_peft_test_reason_debug
 # load_exp_path: /home/user/Documents/octopi-v2/data/exps/2024_12_25_23_02_40_train_llm_test_reason_debug # Parts reasoning
-load_exp_path: /home/user/Documents/octopi-v2/data/exps/2024_11_04_13_54_46_train_llm_peft_PARTS # Parts
 # load_exp_path: /home/samson/octopi-v2/data/exps/2024_10_21_23_45_14_train_llm_peft_test_final_llama3.1 # Sorting
 demo_path: ../data/demo_videos/demo
-embedding_history_path: ../data/demo_videos/demo/embeddings.pt
+image_path: ../data/demo_videos/demo/rgb.png
+embedding_history_path: ../data/demo_videos/demo/embedding_history.pt
 chat_path: ../data/demo_videos/demo/chat.txt
-dotenv_path: ../.env
-image_path: /home/user/Documents/octopi-v2/data/demo_videos/demo/rgb.png
 
-# Run
-cuda: 0
-gpu_config: ../configs/gpu_config.json
+# LLM
 cutoff_len: 256
 max_new_tokens: 500
-openai_model: gpt-4o
-
-# RAG
-rag: False
+## Reasoning
+rag: True
 retrieval_object_num: 5
-data_dir: /home/user/Documents/octopi-v2/data/samples
-embedding_dir: /home/user/Documents/octopi-v2/data/embeddings
+data_dir: ../data/samples
+embedding_dir: ../data/embeddings
+
+# # OpenAI
+# dotenv_path: ../.env
+# openai_model: gpt-4o

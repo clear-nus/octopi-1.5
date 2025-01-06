@@ -11,7 +11,6 @@ from utils.llm import *
 from utils.encoder import *
 from utils.physiclear_constants import get_categorical_labels
 from utils.dataset import get_dataset_sensor_type
-from utils.visualize_encoder import visualize
 import torch.nn.functional as F
 from transformers import AutoTokenizer
 import random
@@ -32,6 +31,8 @@ from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.multiprocessing as mp
+from sklearn import metrics
+
 
 
 def setup(rank, world_size):
@@ -74,22 +75,11 @@ def train_encoder_epoch(rank, configs, loaders, optimizers, models, scaler=None)
         prop_reg_loader = loaders["property_regression"]
     if "tactile_contrastive" in configs["tasks"]:
         tactile_con_enum = enumerate(loaders["tactile_contrastive"])
-    if "text_contrastive" in configs["tasks"]:
-        text_con_enum = enumerate(loaders["text_contrastive"])
-        models["text_adapter"].train()
-    # if "rgb_contrastive" in configs["tasks"]:
-    #     rgb_con_enum = enumerate(loaders["rgb_contrastive"])
-    #     models["rgb_adapter"].train()
-    # if "reconstruction" in configs["tasks"]:
-    #     recon_enum = enumerate(loaders["reconstruction"])
-    #     models["tactile_decoder"].train()
     ce_loss_fn = torch.nn.CrossEntropyLoss()
     mse_loss_fn = torch.nn.MSELoss()
     total_prop_cls_loss, num_prop_cls_samples = 0, 0
     total_text_con_loss, num_text_con_samples = 0, 0
-    total_rgb_con_loss, num_rgb_con_samples = 0, 0
     total_tactile_con_loss, num_tactile_con_samples = 0, 0
-    total_recon_loss, num_recon_samples = 0, 0
     stop_text_con, stop_rgb_con, stop_tactile_con, stop_recon = False, False, False, False
     cnt = 0
     for batch in tqdm.tqdm(prop_reg_loader):
@@ -612,25 +602,135 @@ def train_encoder(rank, world_size, configs, exp_id, g, device, train_tactile_co
         models["dotted_tactile_adapter"] = dotted_tactile_adapter
         os.makedirs(f"{configs['exps_path']}/{exp_id}/viz", exist_ok=True)
         visualize(configs, test_loaders, models, split="test", pca=None, device=rank, exp_id=exp_id, train=True, test=True)
-        #     avocado_dataset = TactilePropertyRegressionDataset(image_processor=image_processor, tokenizer=tokenizer, data_path=configs["data_dir"], split_name="avocado", datasets=configs["datasets"], frame_size=configs["frame_size"])
-        #     avocado_loader = DataLoader(avocado_dataset, batch_size=1, shuffle=False, generator=g)
-        #     visualize(configs, avocado_loader, tactile_vificlip, tactile_adapter, split="avocado", pca=None)
         if exp_name != "debug":
             run.finish()
     dist.barrier()
     cleanup()
 
 
+def visualize(configs, loaders, models, split, pca, device, exp_id, train, test):
+    models["tactile_vificlip"].eval()
+    # if not configs["prompt_learning"]:
+    models["tactile_adapter"].eval()
+    # models["plain_tactile_adapter"].eval()
+    # models["dotted_tactile_adapter"].eval()
+    models["property_classifier"].eval()
+    num_prop_cls_samples = 0
+    if "property_regression" in configs["tasks"]:
+        prop_reg_loader = loaders["property_regression"]
+    all_embeddings, all_preds, all_labels = [], [], []
+    with torch.no_grad():
+        for batch in tqdm.tqdm(prop_reg_loader):
+            if "property_regression" in configs["tasks"]:
+                # Task 1: Property classification
+                all_tactile_frames, properties, datasets = batch
+                all_labels.append(properties.cpu().numpy())
+                batch_size = all_tactile_frames.shape[0]
+                num_prop_cls_samples += batch_size
+                # 1.1: Tactile
+                sensors = [get_dataset_sensor_type(d) for d in datasets]
+                tactile_video_features, _, _, _ = models["tactile_vificlip"](all_tactile_frames.to(device), None, None, sensors)
+                # if not configs["prompt_learning"]:
+                tactile_video_features = models["tactile_adapter"](tactile_video_features)
+                # tactile_video_features = models["dotted_tactile_adapter"](tactile_video_features)
+                # plain_indices = [i for i, x in enumerate(dataset) if get_dataset_sensor_type(x) == "plain"]
+                # plain_tactile_video_features = models["plain_tactile_adapter"](tactile_video_features)
+                # tactile_video_features_clone = tactile_video_features.clone()
+                # tactile_video_features_clone[plain_indices] = plain_tactile_video_features[plain_indices]
+                # 1.2: Regression
+                # prop_preds = models["property_classifier"](tactile_video_features_clone)
+                prop_preds = models["property_classifier"](tactile_video_features)
+                all_preds.append(prop_preds.cpu().numpy())
+                # 1.3: Embeddings
+                # all_embeddings.append(tactile_video_features_clone.cpu().numpy())
+                all_embeddings.append(tactile_video_features.cpu().numpy())
+    all_embeddings = np.concatenate(all_embeddings, axis=0)
+    all_labels = np.concatenate(all_labels, axis=0)
+    all_labels_bin = []
+    for l in all_labels:
+        all_labels_bin.append(np.asarray([get_categorical_labels(l[0], bins=configs["visualize_bins"]), get_categorical_labels(l[1], bins=configs["visualize_bins"])]))
+    all_labels_bin = np.concatenate([all_labels_bin], axis=0)
+    all_preds = np.concatenate(all_preds, axis=0)
+    all_preds_bin = []
+    for p in all_preds:
+        all_preds_bin.append(np.asarray([get_categorical_labels(p[0], bins=configs["visualize_bins"]), get_categorical_labels(p[1], bins=configs["visualize_bins"])]))
+    all_preds_bin = np.concatenate([all_preds_bin], axis=0)
+    if not train and test:
+        # 1) Classification
+        num_samples = all_preds_bin.shape[0]
+        hardness_acc = np.sum(all_preds_bin[:, 0] == all_labels_bin[:, 0]) / num_samples
+        roughness_acc = np.sum(all_preds_bin[:, 1] == all_labels_bin[:, 1]) / num_samples
+        combined_acc = np.sum(np.all(all_preds_bin == all_labels_bin, axis=-1)) / num_samples
+        results = {
+            "Hardness": hardness_acc,
+            "Roughness": roughness_acc,
+            "Combined": combined_acc
+        }
+        acc_json_path = f'{configs["exps_path"]}/{exp_id}/results/encoder_cls_{split}.json'
+        with open(acc_json_path, 'w') as f:
+            json.dump(results, f, indent=4)
+            f.close()
+    # 2) Confusion matrix
+    labels = [i for i in range(configs["visualize_bins"])]
+    hardness_order = [i for i in range(configs["visualize_bins"])]
+    hardness_confusion_matrix = metrics.confusion_matrix(all_labels_bin[:, 0], all_preds_bin[:, 0], labels=labels)
+    hardness_cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix=hardness_confusion_matrix, display_labels=hardness_order)
+    hardness_cm_display.plot()
+    plt.savefig(f"{configs['exps_path']}/{exp_id}/results/confusion_matrix_hardness.png")
+    plt.clf()
+    roughness_order = [i for i in range(configs["visualize_bins"])]
+    roughness_confusion_matrix = metrics.confusion_matrix(all_labels_bin[:, 1], all_preds_bin[:, 1], labels=labels)
+    rougness_cm_display = metrics.ConfusionMatrixDisplay(confusion_matrix=roughness_confusion_matrix, display_labels=roughness_order)
+    rougness_cm_display.plot()
+    plt.savefig(f"{configs['exps_path']}/{exp_id}/results/confusion_matrix_roughness.png")
+    plt.clf()
+    # 3) Embeddings
+    # PCA
+    df = pd.DataFrame()
+    df['Hardness Labels'] = [int(i) for i in all_labels_bin[:,0]]
+    df['Roughness Labels'] = [int(i) for i in all_labels_bin[:,1]]
+    titles = {0: "hardness", 1: "roughness"}
+    orders = {0: hardness_order, 1: roughness_order}
+    labels_name = {0: "Hardness Labels", 1: "Roughness Labels"}
+    labels_num = {0: configs["visualize_bins"], 1: configs["visualize_bins"]}
+    if pca is None:
+        pca = PCA(n_components=30)
+        pca.fit(all_embeddings)
+    pca_result = pca.transform(all_embeddings)
+    print('Cumulative explained variation for the principal components: {}'.format(np.sum(pca.explained_variance_ratio_)))
+    # t-SNE
+    tsne = TSNE(n_components=2, verbose=1, perplexity=20, n_iter=300)
+    tsne_results = tsne.fit_transform(pca_result)
+    df["PCA t-SNE 1"] = tsne_results[:,0]
+    df["PCA t-SNE 2"] = tsne_results[:,1]
+    for label_type_idx in range(all_labels_bin.shape[1]):
+        plt.figure(figsize=(8, 6))
+        sns.scatterplot(
+            x="PCA t-SNE 1", y="PCA t-SNE 2",
+            hue_order=orders[label_type_idx],
+            hue=labels_name[label_type_idx],
+            palette=sns.color_palette("hls", labels_num[label_type_idx]),
+            data=df,
+            legend="full",
+        )
+        plt.xlabel("PCA t-SNE 1", fontsize=18)
+        plt.ylabel("PCA t-SNE 2", fontsize=18)
+        plt.legend(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.xticks(fontsize=16)
+        plt.savefig(f"{configs['exps_path']}/{exp_id}/viz/tsne_{split}_{titles[label_type_idx]}.png")
+        plt.clf()
+
+
 if __name__ == "__main__":
     run_type = f"run"
     config_path = f'configs/{run_type}.yaml'
-    # get configs
     with open(config_path, 'r') as file:
         configs = yaml.safe_load(file)
     exp_name = input("\nExperiment name: ")
     if len(exp_name) == 0:
         exp_name = "debug"
-    exp_id = "train_encoder_distributed"
+    exp_id = "encoder_train"
     if len(exp_name) > 0:
         exp_id = exp_id + f"_{exp_name}"
 

@@ -1,36 +1,70 @@
-import torch, json, os
+import torch
 from torch import nn
 from transformers import CLIPVisionModel
-from transformers.models.clip.modeling_clip import CLIPModel, CLIPVisionTransformer, CLIPTextTransformer, CLIPEncoder, CLIPEncoderLayer, CLIPTextModel, _create_4d_causal_attention_mask, _prepare_4d_attention_mask
+from transformers.models.clip.modeling_clip import CLIPModel, CLIPVisionTransformer, CLIPTextTransformer, CLIPEncoder, CLIPEncoderLayer, _create_4d_causal_attention_mask, _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from typing import Any, Optional, Tuple, Union
+from .dataset import get_dataset_img_norm, get_frames, get_dataset_sensor_type, get_image_transforms
+import os, json, yaml, warnings
+
+from utils.dataset import get_dataset_sensor_type
 
 
 class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
-    def __init__(self, config, configs, text_layer, layer_idx):
+    def __init__(self, config, configs, text_layer, layer_idx, prompt_depth, sensors):
         super().__init__(config)
         self.text_layer = text_layer
+        self.layer_idx = layer_idx
+        self.prompt_depth = prompt_depth
         if layer_idx != 0:
-            self.add_prompt = True
+            self.add_prompt = layer_idx < prompt_depth
             if self.text_layer:
                 self.n_ctx_text = configs["num_context_text"]
-                ctx_vectors = torch.empty(self.n_ctx_text, configs["dim_context_text"])
+                if self.add_prompt:
+                    ctx_vectors = torch.randn((self.n_ctx_text, configs["dim_context_text"])) * 0.02
             else:
                 self.n_ctx_visual = configs["num_context_vision"]
-                ctx_vectors = torch.empty(self.n_ctx_visual, configs["dim_context_vision"])
-            nn.init.normal_(ctx_vectors, std=0.02)
-            self.VPT_shallow = nn.Parameter(ctx_vectors)
+                self.n_ctx_sensor = configs["num_context_sensor"]
+                if self.add_prompt:
+                    ctx_vectors = torch.randn((self.n_ctx_visual, configs["dim_context_vision"])) * 0.02
+                    if self.n_ctx_sensor > 0 and sensors is not None:
+                        self.VPT_shallow_sensors = {}
+                        for sensor in sensors:
+                            sensor_ctx_vectors = torch.randn((self.n_ctx_sensor, configs["dim_context_vision"])) * 0.02
+                            self.VPT_shallow_sensors[sensor] = nn.Parameter(sensor_ctx_vectors)
+                        self.VPT_shallow_sensors = nn.ParameterDict(self.VPT_shallow_sensors)
+                    else:
+                        self.VPT_shallow_sensors = None
+                else:
+                    if self.n_ctx_sensor > 0 and sensors is not None:
+                        self.VPT_shallow_sensors = {}
+                    else:
+                        self.VPT_shallow_sensors = None
+            # else: # NOTE: Remove sensor context for now
+            #     self.n_ctx_visual = configs["num_context_vision"]
+            #     if self.add_prompt:
+            #         ctx_vectors = torch.randn((self.n_ctx_visual, configs["dim_context_vision"])) * 0.02
+            #     self.n_ctx_sensor = configs["num_context_sensor"]
+            #     self.VPT_shallow_sensors = None
+            if self.add_prompt:
+                self.VPT_shallow = nn.Parameter(ctx_vectors)
         else:
             self.add_prompt = False
             if self.text_layer:
                 self.n_ctx_text = configs["num_context_text"]
             else:
                 self.n_ctx_visual = configs["num_context_vision"]
+                if sensors is not None and configs["num_context_sensor"] > 0:
+                    self.n_ctx_sensor = configs["num_context_sensor"]
+                    self.VPT_shallow_sensors = {}
+                else:
+                    self.VPT_shallow_sensors = None
         if layer_idx != config.num_hidden_layers - 1:
             self.add_gate_value = True
             self.VPT_gamma = nn.Parameter(torch.tensor(configs["gate_prior"], requires_grad=True))
         else:
             self.add_gate_value = False
+            
 
     def forward(
         self,
@@ -38,6 +72,7 @@ class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
         attention_mask: torch.Tensor,
         causal_attention_mask: torch.Tensor,
         output_attentions: Optional[bool] = False,
+        sensors: Optional[str] = None,
     ) -> Tuple[torch.FloatTensor]:
         """
         Args:
@@ -50,18 +85,41 @@ class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
                 returned tensors for more detail.
         """
         # Add learnable prompts
+        if not self.text_layer:
+            if self.VPT_shallow_sensors is not None:
+                self.n_ctx = self.n_ctx_visual + self.n_ctx_sensor
+            else:
+                self.n_ctx = self.n_ctx_visual
         if self.add_gate_value:
             if not self.text_layer:
-                prompt_before_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx_visual:, :]
+                # if self.layer_idx == 1: # NOTE: Remove sensor context for now
+                #     prompt_before_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx - self.n_ctx_sensor:, :]
+                # else:
+                prompt_before_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx:, :]
             else:
                 prompt_before_block = hidden_states[:, 1:1+self.n_ctx_text:, :]
         if self.add_prompt:
             if not self.text_layer:
                 # hidden_states -> (N, L, DIM=1024)
                 # Remove the outputs produced by learnable tokens of previous layer
-                prefix = hidden_states[:, :hidden_states.shape[1] - self.n_ctx_visual, :] # (N, L, DIM)
-                visual_context = self.VPT_shallow.expand(hidden_states.shape[0], -1, -1) # (N, n_ctx, DIM)
-                # visual_context = self.VPT_shallow.expand(hidden_states.shape[1], -1, -1).permute(1, 0, 2) # .half()
+                # if self.layer_idx == 1: # NOTE: Remove sensor context for now
+                #     prefix = hidden_states[:, :hidden_states.shape[1] - self.n_ctx - self.n_ctx_sensor, :] # (N, L, DIM)
+                # else:
+                prefix = hidden_states[:, :hidden_states.shape[1] - self.n_ctx, :] # (N, L, DIM)
+                visual_context = self.VPT_shallow.expand(hidden_states.shape[0], -1, -1) # (N, n_ctx_visual, DIM)
+                if self.n_ctx_sensor > 0:
+                    # Add support for multiple sensors
+                    sensor_context = None
+                    for sensor_type in sorted(list(set(sensors))):
+                        if sensor_context is None:
+                            sensor_context = torch.zeros_like(self.VPT_shallow_sensors[sensor_type].expand(hidden_states.shape[0], -1, -1)) # (N, n_ctx_sensor, D)
+                        sensor_mask = torch.tensor([s == sensor_type for s in sensors], dtype=torch.bool, device=hidden_states.device) # (N / max_frame_length, n_ctx_sensor, D)
+                        sensor_mask = torch.unsqueeze(sensor_mask, dim=1).repeat(1, int(hidden_states.shape[0] / sensor_mask.shape[0]))
+                        b, l = sensor_mask.shape
+                        sensor_mask = sensor_mask.reshape(b*l)
+                        sensor_context[sensor_mask] = self.VPT_shallow_sensors[sensor_type].expand(hidden_states.shape[0], -1, -1)[sensor_mask]
+                    visual_context = torch.cat([visual_context, sensor_context], dim=1) # (N, n_ctx, DIM)
+                # # visual_context = self.VPT_shallow.expand(hidden_states.shape[1], -1, -1).permute(1, 0, 2) # .half()
                 hidden_states = torch.cat([prefix, visual_context], dim=1) # (N, L + n_ctx, DIM)
             else:
                 # hidden_states -> (N, L, DIM=768) --> NOTE: 6 belongs to "A tactile sensor video of"
@@ -71,11 +129,23 @@ class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
                 textual_context = self.VPT_shallow.expand(hidden_states.shape[0], -1, -1)
                 # textual_context = self.VPT_shallow.expand(hidden_states.shape[1], -1, -1).permute(1, 0, 2) # .half()
                 hidden_states = torch.cat([prefix, textual_context, suffix], dim=1)
+        else:
+            # First layer to remove learnable prompts
+            if self.layer_idx == self.prompt_depth:
+                if not self.text_layer:
+                    prefix = hidden_states[:, :hidden_states.shape[1] - self.n_ctx, :]
+                    hidden_states = prefix
+                else:
+                    prefix = hidden_states[:, :1, :]
+                    suffix = hidden_states[:, 1 + self.n_ctx_text:, :]
+                    hidden_states = torch.cat([prefix, suffix], dim=1)
 
         residual = hidden_states
+        # print(self.add_prompt, self.text_layer, self.layer_idx, hidden_states.shape)
+        # if "gelsightmini" in self.VPT_shallow_sensors.keys():
+        #     print(self.VPT_shallow_sensors["gelsightmini"].shape)
 
         hidden_states = self.layer_norm1(hidden_states)
-        # TODO: Add learnable temperature for each layer
         hidden_states, attn_weights = self.self_attn(
             hidden_states=hidden_states,
             attention_mask=attention_mask,
@@ -88,22 +158,32 @@ class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
         hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
 
-        if self.add_gate_value:
-            gate = self.VPT_gamma.sigmoid()
-            if not self.text_layer:
-                prompt_after_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx_visual:, :]
-            else:
-                prompt_after_block = hidden_states[:, 1:1+self.n_ctx_text:, :]
-            gated_prompt = gate * prompt_after_block + (1 - gate) * prompt_before_block
-            if not self.text_layer:
-                hidden_states = torch.cat([
-                    hidden_states[:, :hidden_states.shape[1] - self.n_ctx_visual, :],
-                    gated_prompt
-                ], dim=1)
-            else:
-                prefix = hidden_states[:, :1, :]
-                suffix = hidden_states[:, 1 + self.n_ctx_text:, :]
-                hidden_states = torch.cat([prefix, gated_prompt, suffix], dim=1)
+        if self.add_prompt:
+            if self.add_gate_value:
+                gate = self.VPT_gamma.sigmoid()
+                if not self.text_layer:
+                    # if self.layer_idx == 1: # NOTE: Remove sensor context for now
+                    #     prompt_after_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx - self.n_ctx_sensor:, :]
+                    # else:
+                    prompt_after_block = hidden_states[:, hidden_states.shape[1] - self.n_ctx:, :]
+                else:
+                    prompt_after_block = hidden_states[:, 1:1+self.n_ctx_text:, :]
+                gated_prompt = gate * prompt_after_block + (1 - gate) * prompt_before_block
+                if not self.text_layer:
+                    # if self.layer_idx == 1: # NOTE: Remove sensor context for now
+                    #     hidden_states = torch.cat([
+                    #         hidden_states[:, :hidden_states.shape[1] - self.n_ctx - self.n_ctx_sensor, :],
+                    #         gated_prompt
+                    #     ], dim=1)
+                    # else:
+                    hidden_states = torch.cat([
+                        hidden_states[:, :hidden_states.shape[1] - self.n_ctx, :],
+                        gated_prompt
+                    ], dim=1)
+                else:
+                    prefix = hidden_states[:, :1, :]
+                    suffix = hidden_states[:, 1 + self.n_ctx_text:, :]
+                    hidden_states = torch.cat([prefix, gated_prompt, suffix], dim=1)
 
         outputs = (hidden_states,)
         if output_attentions:
@@ -112,17 +192,99 @@ class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
         
 
 class PromptLearningCLIPEncoder(CLIPEncoder):
-    def __init__(self, config, configs, text_layer):
+    def __init__(self, config, configs, text_layer, prompt_depth, sensors):
         super().__init__(config)
         self.config = config
-        self.layers = nn.ModuleList([PromptLearningCLIPEncoderLayer(config, configs, text_layer, layer_idx) for layer_idx in range(config.num_hidden_layers)])
+        if prompt_depth == -1:
+            prompt_depth = config.num_hidden_layers
+        self.layers = nn.ModuleList([PromptLearningCLIPEncoderLayer(config, configs, text_layer, layer_idx, prompt_depth, sensors) for layer_idx in range(config.num_hidden_layers)])
         self.gradient_checkpointing = False
+
+    def forward(
+        self,
+        inputs_embeds,
+        attention_mask: Optional[torch.Tensor] = None,
+        causal_attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        sensors: Optional[str] = None,
+    ) -> Union[Tuple, BaseModelOutput]:
+        r"""
+        Args:
+            inputs_embeds (`torch.FloatTensor` of shape `(batch_size, sequence_length, hidden_size)`):
+                Optionally, instead of passing `input_ids` you can choose to directly pass an embedded representation.
+                This is useful if you want more control over how to convert `input_ids` indices into associated vectors
+                than the model's internal embedding lookup matrix.
+            attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Mask to avoid performing attention on padding token indices. Mask values selected in `[0, 1]`:
+
+                - 1 for tokens that are **not masked**,
+                - 0 for tokens that are **masked**.
+
+                [What are attention masks?](../glossary#attention-mask)
+            causal_attention_mask (`torch.Tensor` of shape `(batch_size, sequence_length)`, *optional*):
+                Causal mask for the text model. Mask values selected in `[0, 1]`:
+
+                - 1 for tokens that are **not masked**,
+                - 0 for tokens that are **masked**.
+
+                [What are attention masks?](../glossary#attention-mask)
+            output_attentions (`bool`, *optional*):
+                Whether or not to return the attentions tensors of all attention layers. See `attentions` under
+                returned tensors for more detail.
+            output_hidden_states (`bool`, *optional*):
+                Whether or not to return the hidden states of all layers. See `hidden_states` under returned tensors
+                for more detail.
+            return_dict (`bool`, *optional*):
+                Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
+        """
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
+        output_hidden_states = (
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        encoder_states = () if output_hidden_states else None
+        all_attentions = () if output_attentions else None
+        hidden_states = inputs_embeds
+        for idx, encoder_layer in enumerate(self.layers):
+            if output_hidden_states:
+                encoder_states = encoder_states + (hidden_states,)
+            if self.gradient_checkpointing and self.training:
+                layer_outputs = self._gradient_checkpointing_func(
+                    encoder_layer.__call__,
+                    hidden_states,
+                    attention_mask,
+                    causal_attention_mask,
+                    output_attentions,
+                    sensors,
+                )
+            else:
+                layer_outputs = encoder_layer(
+                    hidden_states,
+                    attention_mask,
+                    causal_attention_mask,
+                    output_attentions=output_attentions,
+                    sensors=sensors,
+                )
+
+            hidden_states = layer_outputs[0]
+            if output_attentions:
+                all_attentions = all_attentions + (layer_outputs[1],)
+        if output_hidden_states:
+            encoder_states = encoder_states + (hidden_states,)
+        if not return_dict:
+            return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
+        return BaseModelOutput(
+            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
+        )
 
 
 class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
-    def __init__(self, config, configs, text_layer):
+    def __init__(self, config, configs, text_layer, sensors=None):
         super().__init__(config)
-        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer)
+        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer, configs["prompt_depth_vision"], sensors=sensors)
+        self.configs = configs
         if configs["prompt_depth_vision"] == 0:
             self.VPT_shallow = False
         else:
@@ -130,9 +292,15 @@ class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
         if self.VPT_shallow:
             # Learnable prompt tokens as input in the first layer
             n_ctx = configs["num_context_vision"]
-            ctx_vectors = torch.empty(n_ctx, configs["dim_context_vision"])
-            nn.init.normal_(ctx_vectors, std=0.02)
+            ctx_vectors = torch.randn((n_ctx, configs["dim_context_vision"])) * 0.02
             self.VPT = nn.Parameter(ctx_vectors)
+            if configs["num_context_sensor"] > 0:
+                self.VPT_sensors = {}
+                for sensor in sensors:
+                    n_ctx = configs["num_context_sensor"]
+                    sensor_ctx_vectors = torch.randn((n_ctx, configs["dim_context_vision"])) * 0.02
+                    self.VPT_sensors[sensor] = nn.Parameter(sensor_ctx_vectors)
+                self.VPT_sensors = nn.ParameterDict(self.VPT_sensors)
         self.prompt_till_layer_visual = configs["prompt_depth_vision"]
     
     def forward(
@@ -141,6 +309,7 @@ class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        sensors: Optional[str] = None,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
         r"""
         Returns:
@@ -156,8 +325,22 @@ class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
         hidden_states = self.embeddings(pixel_values) # (N, L, D)
         if self.VPT_shallow:
             # Learnable prompt tokens as input in the first layer
-            visual_ctx = self.VPT.expand(hidden_states.shape[0], -1, -1) # .half() # (N, n_ctx, D)
-            hidden_states = torch.cat([hidden_states, visual_ctx], dim=1) # (N, L + n_ctx, D)
+            if self.configs["num_context_sensor"] > 0:
+                # Support for multiple sensors
+                sensor_ctx = None
+                for sensor_type in sorted(list(set(sensors))):
+                    if sensor_ctx is None:
+                        sensor_ctx = torch.zeros_like(self.VPT_sensors[sensor_type].expand(hidden_states.shape[0], -1, -1)) # (N, n_ctx_sensor, D)
+                    sensor_mask = torch.tensor([s == sensor_type for s in sensors], dtype=torch.bool, device=hidden_states.device)
+                    sensor_mask = torch.unsqueeze(sensor_mask, dim=1).repeat(1, int(hidden_states.shape[0] / sensor_mask.shape[0]))
+                    b, l = sensor_mask.shape
+                    sensor_mask = sensor_mask.reshape(b*l)
+                    sensor_ctx[sensor_mask] = self.VPT_sensors[sensor_type].expand(hidden_states.shape[0], -1, -1)[sensor_mask]
+            visual_ctx = self.VPT.expand(hidden_states.shape[0], -1, -1) # .half() # (N, n_ctx_vision, D)
+            if self.configs["num_context_sensor"] > 0:
+                hidden_states = torch.cat([hidden_states, visual_ctx, sensor_ctx], dim=1) # (N, L + n_ctx, D)
+            else:
+                hidden_states = torch.cat([hidden_states, visual_ctx], dim=1)
         else:
             assert self.prompt_till_layer_visual == 0
         hidden_states = self.pre_layrnorm(hidden_states)
@@ -166,6 +349,7 @@ class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            sensors=sensors
         )
         last_hidden_state = encoder_outputs[0]
         pooled_output = last_hidden_state[:, 0, :]
@@ -183,7 +367,7 @@ class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
 class PromptLearningCLIPTextTransformer(CLIPTextTransformer):
     def __init__(self, config, configs, text_layer):
         super().__init__(config)
-        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer)
+        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer, configs["prompt_depth_text"], sensors=None)
         if configs["prompt_depth_text"] == 0:
             self.VPT_shallow = False
         else:
@@ -192,8 +376,7 @@ class PromptLearningCLIPTextTransformer(CLIPTextTransformer):
             # Learnable prompt tokens as input in the first layer
             n_ctx = configs["num_context_text"]
             self.n_ctx = n_ctx
-            ctx_vectors = torch.empty(n_ctx, configs["dim_context_text"])
-            nn.init.normal_(ctx_vectors, std=0.02)
+            ctx_vectors = torch.randn((n_ctx, configs["dim_context_text"])) * 0.02
             self.VPT = nn.Parameter(ctx_vectors)
         self.prompt_till_layer_text = configs["prompt_depth_text"]
     
@@ -281,12 +464,12 @@ class PromptLearningCLIPTextTransformer(CLIPTextTransformer):
 
 
 class PromptLearningCLIPModel(CLIPModel):
-    def __init__(self, config, configs):
+    def __init__(self, config, configs, sensors):
         super().__init__(config)
         text_config = config.text_config
         vision_config = config.vision_config
         self.text_model = PromptLearningCLIPTextTransformer(text_config, configs, text_layer=True)
-        self.vision_model = PromptLearningCLIPVisionTransformer(vision_config, configs, text_layer=False)
+        self.vision_model = PromptLearningCLIPVisionTransformer(vision_config, configs, text_layer=False, sensors=sensors)
         # Initialize weights and apply final processing
         self.post_init()
 
@@ -300,15 +483,14 @@ class ViFiCLIP(nn.Module):
                 if "text_model" in name:
                     param.requires_grad_(False)
         self.use_positional_embeds = use_positional_embeds
-        # NOTE: Not used for distributed training
-        self.logit_scale_tactile = nn.Parameter(torch.log(torch.tensor(1/0.07)))
-        self.logit_scale_text = nn.Parameter(torch.log(torch.tensor(1/0.07)))
+        # self.logit_scale_tactile = nn.Parameter(torch.log(torch.tensor(1/0.07)))
+        # self.logit_scale_text = nn.Parameter(torch.log(torch.tensor(1/0.07)))
 
-    def forward(self, frames, texts, attention_masks):
+    def forward(self, frames, texts, attention_masks, sensors):
         # video
         b, l, c, h, w = frames.shape # (b, l, c, h, w)
         frames = frames.reshape(b * l, c, h, w) # (b * l, c, h, w)
-        frame_embeds = self.clip_model.vision_model(frames)
+        frame_embeds = self.clip_model.vision_model(frames, sensors=sensors)
         frame_features = frame_embeds.pooler_output # (b * l, patch_embed_size)
         # pooled_output = self.clip_model.visual_projection(vision_outputs[1])
         _, patch_embed_size = frame_features.shape
@@ -357,35 +539,36 @@ class CLIPRFC(nn.Module):
     def __init__(self, input_size, output_size, residual_ratio):
         super(CLIPRFC, self).__init__()
         self.act = nn.GELU()
-        self.residual_ratio = residual_ratio
+        # self.residual_ratio = residual_ratio
         self.rfc = nn.Sequential(
-            nn.Linear(input_size, 512),
+            nn.Linear(input_size, input_size // 2), # NOTE
             self.act,
-            nn.Linear(512, input_size),
+            # nn.Dropout(0.5), # NOTE
+            nn.Linear(input_size // 2, output_size),
         )
         for name, param in self.rfc.named_parameters():
             if "weight" in name:
                 torch.nn.init.trunc_normal_(param, std=1e-3)
             elif "bias" in name:
                 torch.nn.init.zeros_(param)
-        if input_size != output_size:
-            self.align = nn.Sequential(
-                self.act,
-                nn.Linear(input_size, output_size),
-            )
-            for name, param in self.align.named_parameters():
-                if "weight" in name:
-                    torch.nn.init.trunc_normal_(param, std=1e-3)
-                elif "bias" in name:
-                    torch.nn.init.zeros_(param)
-        else:
-            self.align = None
+        # if input_size != output_size:
+        #     self.align = nn.Sequential(
+        #         self.act,
+        #         nn.Linear(input_size, output_size),
+        #     )
+        #     for name, param in self.align.named_parameters():
+        #         if "weight" in name:
+        #             torch.nn.init.trunc_normal_(param, std=1e-3)
+        #         elif "bias" in name:
+        #             torch.nn.init.zeros_(param)
+        # else:
+        #     self.align = None
 
     def forward(self, vision_features):
         rfc_features = self.rfc(vision_features)
         combined_features = rfc_features + vision_features
-        if self.align is not None:
-            combined_features = self.align(combined_features)
+        # if self.align is not None:
+        #     combined_features = self.align(combined_features)
         return combined_features
     
 
@@ -398,11 +581,24 @@ class PropertyClassifier(nn.Module):
             self.act,
             nn.Linear(512, 256),
             self.act
-        )
+        ) # NOTE
+        # self.hardness_fc = nn.Linear(input_size, 1) # NOTE
+        # self.roughness_fc = nn.Linear(input_size, 1) # NOTE
         self.hardness_fc = nn.Linear(256, 1)
         self.roughness_fc = nn.Linear(256, 1)
+        for name, param in self.hardness_fc.named_parameters():
+            if "weight" in name:
+                torch.nn.init.trunc_normal_(param, std=1e-3)
+            elif "bias" in name:
+                torch.nn.init.zeros_(param)
+        for name, param in self.roughness_fc.named_parameters():
+            if "weight" in name:
+                torch.nn.init.trunc_normal_(param, std=1e-3)
+            elif "bias" in name:
+                torch.nn.init.zeros_(param)
 
     def forward(self, vision_features):
+        # vision_features = self.act(vision_features) # NOTE
         vision_features = self.fc(vision_features)
         hardness_preds = self.hardness_fc(vision_features)
         roughness_preds = self.roughness_fc(vision_features)
@@ -410,8 +606,110 @@ class PropertyClassifier(nn.Module):
         return preds
     
 
-def get_rag_train_embeddings(tactile_vificlip, configs, device):
+class ContrastiveAdapter(nn.Module):
+    def __init__(self, input_size, output_size):
+        super(ContrastiveAdapter, self).__init__()
+        self.act = nn.GELU()
+        self.fc = nn.Sequential(
+            self.act,
+            nn.Linear(input_size, output_size),
+        )
+        for name, param in self.fc.named_parameters():
+            if "weight" in name:
+                torch.nn.init.trunc_normal_(param, std=1e-3)
+            elif "bias" in name:
+                torch.nn.init.zeros_(param)
+
+    def forward(self, vision_features):
+        rfc_features = self.fc(vision_features)
+        combined_features = rfc_features + vision_features
+        return combined_features
+    
+
+def load_encoder(configs, device):
+    print("")
+    if configs["load_exp_path"] is None:
+        load_exp_configs = None
+        sensors = sorted(list(set([get_dataset_sensor_type(d) for d in configs["datasets"]])))
+    else:
+        load_exp_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "run.yaml"), 'r'))
+        sensors = sorted(list(set([get_dataset_sensor_type(d) for d in load_exp_configs["datasets"]])))
+    if "prompt_learning.yaml" in os.listdir(configs["load_exp_path"]):
+        prompt_learning_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "prompt_learning.yaml")))
+        prompt_learning_configs["num_context_sensor"] = 0 # NOTE
+        clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs, sensors).to(device)
+    else:
+        clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
+    tactile_vificlip = ViFiCLIP(clip, freeze_text_encoder=True, use_positional_embeds=True).to(device)
+    if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
+        state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True)
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        tactile_vificlip.load_state_dict(state_dict, strict=False)
+        print("Loaded tactile ViFi-CLIP!")
+    else:
+        warnings.warn("No trained tactile ViFi-CLIP model found!")
+    tactile_adapter = CLIPRFC(input_size=load_exp_configs["dim_context_vision"], output_size=load_exp_configs["dim_context_vision"], residual_ratio=load_exp_configs["residual_ratio"]).to(device)
+    if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_adapter.pt")):
+        state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_adapter.pt"), map_location=device, weights_only=True)
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        tactile_adapter.load_state_dict(state_dict, strict=True)
+        print("Loaded tactile adapter!")
+    else:
+        warnings.warn("No trained tactile adapter found!")
+    property_classifier = PropertyClassifier(input_size=load_exp_configs["dim_context_vision"]).to(device)
+    if os.path.exists(os.path.join(configs["load_exp_path"], "property_classifier.pt")):
+        state_dict = torch.load(os.path.join(configs["load_exp_path"], "property_classifier.pt"), map_location=device, weights_only=True)
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        property_classifier.load_state_dict(state_dict, strict=True)
+        print("Loaded property regression model!")
+    else:
+        warnings.warn("No trained property regression model found!")
+    print("")
+    return tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs
+
+
+def generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device, sample_dir, embedding_dir, datasets=["physiclear"], splits=["train"]):
     tactile_vificlip.eval()
+
+    # Get sample count
+    sample_count = 0
+    for sample in os.listdir(sample_dir):
+        dataset = sample.split("_")[0]
+        if dataset not in datasets:
+            continue
+        else:
+            sample_path = os.path.join(sample_dir, sample)
+            data = json.load(open(os.path.join(sample_path, "data.json"), "r"))
+            if data["split"] not in splits:
+                continue
+            sample_count += 1
+
+    saved_count = 0
+    os.makedirs(embedding_dir, exist_ok=True)
+    for sample in os.listdir(sample_dir):
+        # Save embeddings only for relevant training samples
+        dataset = sample.split("_")[0]
+        if dataset not in datasets:
+            continue
+        sample_path = os.path.join(sample_dir, sample)
+        data = json.load(open(os.path.join(sample_path, "data.json"), "r"))
+        if data["split"] not in splits:
+            continue
+        embedding_path = os.path.join(embedding_dir, f"{sample}.pt")
+        sensors = [get_dataset_sensor_type(dataset)]
+        image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=load_exp_configs["flip_p"])
+        tactile = os.path.join(sample_path, "tactile")
+        tactile_frames, _ = get_frames(tactile, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
+        tactile_frames = torch.unsqueeze(tactile_frames, dim=0)
+        tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+        torch.save(torch.squeeze(tactile_video_features.cpu(), dim=0), embedding_path)
+        saved_count += 1
+        if saved_count % 100 == 0:
+            print(f"Generated {saved_count} / {sample_count} RAG embeddings.")
+    print("Done!")
+    
+
+def get_rag_embeddings(configs, device):
     object_ids = []
     sample_tactile_paths = []
     saved_embeddings = []
