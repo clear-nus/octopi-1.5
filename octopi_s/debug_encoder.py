@@ -10,7 +10,7 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 
 
-target_samples_path = "data/schaeffler_test_set/unseen_samples/samples"
+target_samples_path = "data/schaeffler_test_set/samples"
 
 
 def troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device):
@@ -18,6 +18,8 @@ def troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device):
     save_path = f"{configs['exps_path']}/{exp_id}/troubleshoot"
     retrieval_json = {}
     prop_preds_json = {}
+    # print("\nGenerating RAG embeddings...")
+    # generate_rag_embeddings(configs, load_exp_configs, models["tactile_vificlip"], device, configs["rag_sample_dir"], configs["embedding_dir"])
     saved_embeddings, sample_tactile_paths, object_ids = get_rag_embeddings(configs, device)
     saved_embeddings = saved_embeddings.to(device)
     retrieved = 0
@@ -34,10 +36,13 @@ def troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device):
         image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=load_exp_configs["flip_p"])
         sample_tactile_frames, _ = get_frames(sample_tactile_frames, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
         sample_tactile_frames = torch.unsqueeze(sample_tactile_frames, dim=0)
-        sensors = [get_dataset_sensor_type(dataset)]
-        sample_tactile_video_features, _, _, _ = models["tactile_vificlip"](sample_tactile_frames.to(device), None, None, sensors)
-        sample_tactile_video_features = models["tactile_adapter"](sample_tactile_video_features)
-        prop_preds = models["property_classifier"](sample_tactile_video_features)
+        sample_tactile_video_features, _, _, _ = models["tactile_vificlip"](sample_tactile_frames.to(device), None, None)
+        dotted_tactile_video_features = models["dotted_tactile_adapter"](sample_tactile_video_features)
+        plain_indices = [i for i, x in enumerate([dataset]) if get_dataset_sensor_type(x) == "plain"]
+        plain_tactile_video_features = models["plain_tactile_adapter"](dotted_tactile_video_features)
+        tactile_video_features_clone = dotted_tactile_video_features.clone()
+        tactile_video_features_clone[plain_indices] = plain_tactile_video_features[plain_indices]
+        prop_preds = models["property_classifier"](tactile_video_features_clone)
         prop_preds = [round(i, 3) for i in prop_preds.detach().cpu().numpy().tolist()[0]]
         gt_hardness = HARDNESS_RANK_REGRESSION[sample_object_id]
         gt_roughness = ROUGHNESS_RANK_REGRESSION[sample_object_id]
@@ -107,18 +112,21 @@ if __name__ == "__main__":
     exp_id = exp_date + "_" + exp_id
     os.makedirs(f"{configs['exps_path']}", exist_ok=True)
     os.makedirs(f"{configs['exps_path']}/{exp_id}", exist_ok=True)
+    os.makedirs(f"{configs['exps_path']}/{exp_id}/viz", exist_ok=True)
     with open(f"{configs['exps_path']}/{exp_id}/{run_type}.yaml", 'w') as file:
         documents = yaml.dump(configs, file, sort_keys=False)
         file.close()
     device = f'cuda:{configs["cuda"]}'
 
-    tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
+    tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
     tactile_vificlip.eval()
-    tactile_adapter.eval()
+    dotted_tactile_adapter.eval()
+    plain_tactile_adapter.eval()
     property_classifier.eval()
     models = {
         "tactile_vificlip": tactile_vificlip,
-        "tactile_adapter": tactile_adapter,
+        "dotted_tactile_adapter": dotted_tactile_adapter,
+        "plain_tactile_adapter": plain_tactile_adapter,
         "property_classifier": property_classifier,
     }
 
@@ -130,7 +138,7 @@ if __name__ == "__main__":
     loaders = {
         "property_regression": test_prop_reg_loader
     }
-    # visualize(configs, loaders, models, split="test", pca=None, device=device, exp_id=exp_id, train=False, test=True)
+    visualize(configs, loaders, models, split="test", pca=None, device=device, exp_id=exp_id)
 
     print("\nTroubleshooting encoder...")
     troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device)

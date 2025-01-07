@@ -22,7 +22,6 @@ def regression_collate_fn(data):
     properties = []
     datasets = []
     for k in data:
-        # frames.append(torch.squeeze(torch.stack(k[0]), dim=0))
         frame_len = torch.squeeze(torch.stack(k[0]), dim=0).shape[0]
         if frame_len > max_frame_length:
             max_frame_length = frame_len
@@ -460,8 +459,7 @@ class TactileLLMDataset(Dataset):
 def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
-    sensors = [get_dataset_sensor_type("physiclear")] # FIXME
-    tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
+    tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None)
     similarities = cos(saved_embeddings, tactile_video_features)
     similarities_topk = torch.topk(similarities, k=retrieval_object_num)
     similar_objects = [object_ids[i] for i in similarities_topk.indices]
@@ -480,62 +478,14 @@ def encode_text(tokenizer, text):
     return tokens
 
 
-def get_dataset_sensor_type_old(dataset):
+def get_dataset_sensor_type(dataset):
     dataset_sensor_map = {
-        "feelang": "plain",
         "hardness": "dotted",
         "objectfolder": "plain",
         "physiclear": "plain",
         "physicleardotted": "dotted",
-        "schaeffler": "plain",
-        "schaefflerdotted": "dotted",
-        "tvl": "plain"
     }
     return dataset_sensor_map[dataset]
-
-
-def get_dataset_sensor_type(dataset):
-    dataset_sensor_map = {
-        "feelang": "gelsightmini",
-        "hardness": "gelsight17",
-        "objectfolder": "gelsight",
-        "physiclear": "gelsightmini",
-        "physicleardotted": "gelsightminidotted",
-        "schaeffler": "gelsightmini",
-        "schaefflerdotted": "gelsightminidotted",
-        "tvl": "digit"
-    }
-    return dataset_sensor_map[dataset]
-
-
-def get_dataset_img_norm(dataset):
-    # CLIP
-    # mean=[0.48145466, 0.4578275, 0.40821073],
-    # std=[0.26862954, 0.26130258, 0.27577711]
-    sensor = get_dataset_sensor_type(dataset)
-    dataset_img_norm_map = {
-        "gelsight": {
-            "mean": [0.46640, 0.44838, 0.45375],
-            "std": [0.08117, 0.07227, 0.085867],
-        },
-        "gelsightmini": {
-            "mean": [0.20954, 0.37124, 0.40463],
-            "std": [0.12138, 0.06335, 0.10677],
-        },
-        "gelsightminidotted": {
-            "mean": [0.20251, 0.36450, 0.40409],
-            "std": [0.12902, 0.08006, 0.11987],
-        },
-        "gelsight17": {
-            "mean": [0.42487, 0.41575, 0.43780],
-            "std": [0.06776, 0.06513, 0.06871],
-        },
-        "digit": {
-            "mean": [0.41146, 0.42410, 0.39767],
-            "std": [0.15062, 0.08714, 0.08073],
-        },
-    }
-    return dataset_img_norm_map[sensor]["mean"], dataset_img_norm_map[sensor]["std"]
 
 
 def get_image_transforms(frame_size, dataset, split_name, flip_p):
@@ -554,15 +504,6 @@ def get_image_transforms(frame_size, dataset, split_name, flip_p):
             transforms_list.append(transforms.RandomVerticalFlip(1))
     else:
         transforms_list.append(transforms.CenterCrop(frame_size))
-    # transforms_list = [transforms.Resize(frame_size, interpolation=3)]
-    # mean, std = get_dataset_img_norm(dataset)
-    # transforms_list += [
-    #     transforms.ToTensor(),
-    #     transforms.Normalize(
-    #         mean=mean,
-    #         std=std
-    #     )
-    # ]
     image_transforms = transforms.Compose(transforms_list)
     return image_transforms
 

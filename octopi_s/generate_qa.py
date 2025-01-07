@@ -28,7 +28,7 @@ def get_property_order(parts, part_indices_map, property, decreasing):
     return order
 
 
-def generate_description_comparison_qa(json_path, data_dir, split, num_samples, open_set_texture, use_parts):
+def generate_description_comparison_qa(json_path, data_dir, split, num_samples, open_set_texture, use_parts, qa_id):
     # Load samples
     for i in range(len(json_path)):
         if i == 0:
@@ -61,12 +61,6 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
         else:
             get_description = random.choice([True, False])
         decreasing = True
-        # NOTE
-        # get_description = True
-        # get_order = True
-        # decreasing = True
-        # num_objects = 3
-        # NOTE
         if num_objects == 1:
             question = ["Describe the object in the following tactile video(s).\n\n"]
         elif get_description and get_order:
@@ -88,22 +82,9 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
         }
         answer = []
         # Get object(s) and their frames
-        # NOTE
-        # new_samples = {}
-        # new_objects = ["physiclear_baseball_seams", "physiclear_tennis_ball", "physiclear_stress_ball"]
-        # collection = "balls"
-        # # new_objects = ["physiclear_good_apple", "physiclear_orange", "physiclear_spoilt_apple"]
-        # # collection = "fruits"
-        # for k in samples:
-        #     if k in new_objects:
-        #         new_samples[k] = samples[k]
-        # samples = new_samples
-        # num_objects = len(new_objects)
-        # NOTE
         objects = random.sample(list(samples.keys()), k=num_objects)
         object_indices = random.sample(range(min_num_objects, max_num_objects+1), num_objects)
         all_tactile = []
-        # all_objects = [i for i in objects]
         all_objects_dict = {}
         all_parts = []
         part_indices_map = {}
@@ -126,10 +107,7 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
             else:
                 parts = [obj]
                 for p in range(num_parts-1):
-                    # part = obj
-                    # while part in all_objects:
                     part = random.choice(list(samples.keys()))
-                    # all_objects.append(part)
                     parts.append(part)
                 object_idx = object_indices[i]
                 all_objects_dict[f"Object {object_idx}"] = {}
@@ -152,13 +130,10 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
                     if open_set_texture:
                         random.shuffle(OPEN_SET_TEXTURES[obj])
                         description = ", ".join(OPEN_SET_TEXTURES[obj])
-                    # else:
-                    #     description = TEXTURES[obj][0]
                     answer.append(f"Object {object_idx}: {description}.")
                 else:
                     answer.append(f"Object {object_idx}\n")
                     for p in range(num_parts):
-                        # all_objects[f"Object {object_idx}"][p+1] = parts[p]
                         if open_set_texture:
                             random.shuffle(OPEN_SET_TEXTURES[parts[p]])
                             description = ", ".join(OPEN_SET_TEXTURES[parts[p]])
@@ -188,14 +163,13 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
             })
         all_data.append(data)
     # Save all data
-    file_name = "description_comparison_qa"
-    # data_file = open(os.path.join(data_dir, f"{split}_{file_name}_{collection}.json"), "w") # NOTE
-    data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w") # Original
+    file_name = f"description_comparison_qa_{qa_id}"
+    data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w")
     json.dump(all_data, data_file, indent=4) 
     data_file.close()
 
 
-def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, open_set_texture, use_parts, scenario_qa_id):
+def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, open_set_texture, use_parts, qa_id):
     scenario_info = {
         "guess_touch_from_objects_balls": {
             "target_sample": ["physiclear_baseball_seams", "physiclear_tennis_ball", "physiclear_stress_ball"],
@@ -233,18 +207,13 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
 
     # Data
     all_data = []
-    if configs["reference_reasoning_qa_file"] is None:
-        existing = {
-            k: [] for k in list(scenario_info.keys())
-        }
-        if scenarios_to_use is None:
-            scenarios_to_use = {k: v for k, v in scenario_info.items()}
-        else:
-            scenarios_to_use = {k: v for k, v in scenario_info.items() if k in scenarios_to_use}
+    existing = {
+        k: [] for k in list(scenario_info.keys())
+    }
+    if scenarios_to_use is None:
+        scenarios_to_use = {k: v for k, v in scenario_info.items()}
     else:
-        reference_reasoning_qa_file_data = json.load((open(configs["reference_reasoning_qa_file"], "r")))
-        num_samples = len(reference_reasoning_qa_file_data)
-        # TODO: Generate from reference QA file
+        scenarios_to_use = {k: v for k, v in scenario_info.items() if k in scenarios_to_use}
     for _ in range(num_samples):
         exploratory_procedures = ["pressing", "sliding"]
         exist = False
@@ -393,12 +362,8 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
         if not exist:
             all_data.append(data)
     # Save all data
-    if configs["reference_reasoning_qa_file"] is None:
-        file_name = f"test_scenario_qa_{scenario_qa_id}"
-        data_file = open(os.path.join(data_dir, f"{file_name}.json"), "w")
-    else:
-        file_name = configs["reference_reasoning_qa_file"].split(".")[0]
-        data_file = open(f"{file_name}_copy_{scenario_qa_id}.json", "w")
+    file_name = f"test_scenario_qa_{qa_id}"
+    data_file = open(os.path.join(data_dir, f"{file_name}.json"), "w")
     json.dump(all_data, data_file, indent=4)
     data_file.close()
 
@@ -409,24 +374,24 @@ if __name__ == "__main__":
     with open(config_path, 'r') as file:
         configs = yaml.safe_load(file)
     os.makedirs(configs["output_data_dir"], exist_ok=True)
+    qa_id = input("Enter QA ID: ")
+    while qa_id == "":
+        qa_id = input("Please enter QA ID: ")
 
     # 1) Description / ranking
     print("Generating description / ranking QA pairs...")
     for split in ["train", "test"]:
         json_path = [os.path.join(configs["output_data_dir"], f"{split}_samples.json")]
         num_samples = configs[f"description_qa_{split}_num"]
-        generate_description_comparison_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"])
+        generate_description_comparison_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"], qa_id)
     print("Done!")
 
     # 2) Scenario reasoning
     print("Generating scenario reasoning QA pairs...")
-    scenario_qa_id = input("Enter scenario QA ID: ")
-    while scenario_qa_id == "":
-        scenario_qa_id = input("Please enter scenario QA ID: ")
     num_samples = configs["scenario_qa_test_num"]
     json_paths = [
         os.path.join(configs["output_data_dir"], f"train_samples.json"),
         os.path.join(configs["output_data_dir"], f"test_samples.json"),
     ]
-    generate_scenario_qa(json_paths, configs["output_data_dir"], num_samples, configs["scenarios"], configs["open_set_texture"], configs["use_parts"], scenario_qa_id)
+    generate_scenario_qa(json_paths, configs["output_data_dir"], num_samples, configs["scenarios"], configs["open_set_texture"], configs["use_parts"], qa_id)
     print("Done!")

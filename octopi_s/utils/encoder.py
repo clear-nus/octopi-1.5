@@ -7,8 +7,6 @@ from typing import Any, Optional, Tuple, Union
 from .dataset import get_frames, get_dataset_sensor_type, get_image_transforms
 import os, json, yaml, warnings
 
-from utils.dataset import get_dataset_sensor_type
-
 
 class PromptLearningCLIPEncoderLayer(CLIPEncoderLayer):
     def __init__(self, config, configs, text_layer, layer_idx, prompt_depth):
@@ -218,9 +216,9 @@ class PromptLearningCLIPEncoder(CLIPEncoder):
 
 
 class PromptLearningCLIPVisionTransformer(CLIPVisionTransformer):
-    def __init__(self, config, configs, text_layer, sensors=None):
+    def __init__(self, config, configs, text_layer):
         super().__init__(config)
-        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer, configs["prompt_depth_vision"], sensors=sensors)
+        self.encoder = PromptLearningCLIPEncoder(config, configs, text_layer, configs["prompt_depth_vision"])
         self.configs = configs
         if configs["prompt_depth_vision"] == 0:
             self.VPT_shallow = False
@@ -378,7 +376,7 @@ class PromptLearningCLIPTextTransformer(CLIPTextTransformer):
 
 
 class PromptLearningCLIPModel(CLIPModel):
-    def __init__(self, config, configs, sensors):
+    def __init__(self, config, configs):
         super().__init__(config)
         text_config = config.text_config
         vision_config = config.vision_config
@@ -400,11 +398,11 @@ class ViFiCLIP(nn.Module):
         self.logit_scale_tactile = nn.Parameter(torch.log(torch.tensor(1/0.07)))
         self.logit_scale_text = nn.Parameter(torch.log(torch.tensor(1/0.07)))
 
-    def forward(self, frames, texts, attention_masks, sensors):
+    def forward(self, frames, texts, attention_masks):
         # video
         b, l, c, h, w = frames.shape # (b, l, c, h, w)
         frames = frames.reshape(b * l, c, h, w) # (b * l, c, h, w)
-        frame_embeds = self.clip_model.vision_model(frames, sensors=sensors)
+        frame_embeds = self.clip_model.vision_model(frames)
         frame_features = frame_embeds.pooler_output # (b * l, patch_embed_size)
         # pooled_output = self.clip_model.visual_projection(vision_outputs[1])
         _, patch_embed_size = frame_features.shape
@@ -501,16 +499,11 @@ def load_encoder(configs, device):
     print("")
     if configs["load_exp_path"] is None:
         load_exp_configs = None
-        sensors = sorted(list(set([get_dataset_sensor_type(d) for d in configs["datasets"]])))
     else:
         load_exp_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "run.yaml"), 'r'))
-        sensors = sorted(list(set([get_dataset_sensor_type(d) for d in load_exp_configs["datasets"]])))
     if "prompt_learning.yaml" in os.listdir(configs["load_exp_path"]):
         prompt_learning_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "prompt_learning.yaml")))
-        prompt_learning_configs["num_context_sensor"] = 0 # NOTE
-        clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs, sensors).to(device)
-    # else:
-    #     clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
+        clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs).to(device)
     tactile_vificlip = ViFiCLIP(clip, freeze_text_encoder=True, use_positional_embeds=True).to(device)
     if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
         state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True)
@@ -519,14 +512,22 @@ def load_encoder(configs, device):
         print("Loaded tactile ViFi-CLIP!")
     else:
         warnings.warn("No trained tactile ViFi-CLIP model found!")
-    tactile_adapter = Adapter(input_size=load_exp_configs["dim_context_vision"], output_size=load_exp_configs["dim_context_vision"], residual_ratio=load_exp_configs["residual_ratio"]).to(device)
-    if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_adapter.pt")):
-        state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_adapter.pt"), map_location=device, weights_only=True)
+    dotted_tactile_adapter = Adapter(input_size=load_exp_configs["dim_context_vision"], output_size=load_exp_configs["dim_context_vision"], residual_ratio=load_exp_configs["residual_ratio"]).to(device)
+    if os.path.exists(os.path.join(configs["load_exp_path"], "dotted_tactile_adapter.pt")):
+        state_dict = torch.load(os.path.join(configs["load_exp_path"], "dotted_tactile_adapter.pt"), map_location=device, weights_only=True)
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
-        tactile_adapter.load_state_dict(state_dict, strict=True)
-        print("Loaded tactile adapter!")
+        dotted_tactile_adapter.load_state_dict(state_dict, strict=True)
+        print("Loaded dotted tactile adapter!")
     else:
-        warnings.warn("No trained tactile adapter found!")
+        warnings.warn("No trained dotted tactile adapter found!")
+    plain_tactile_adapter = Adapter(input_size=load_exp_configs["dim_context_vision"], output_size=load_exp_configs["dim_context_vision"], residual_ratio=load_exp_configs["residual_ratio"]).to(device)
+    if os.path.exists(os.path.join(configs["load_exp_path"], "plain_tactile_adapter.pt")):
+        state_dict = torch.load(os.path.join(configs["load_exp_path"], "plain_tactile_adapter.pt"), map_location=device, weights_only=True)
+        state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+        plain_tactile_adapter.load_state_dict(state_dict, strict=True)
+        print("Loaded plain tactile adapter!")
+    else:
+        warnings.warn("No trained dotted tactile adapter found!")
     property_classifier = PropertyClassifier(input_size=load_exp_configs["dim_context_vision"]).to(device)
     if os.path.exists(os.path.join(configs["load_exp_path"], "property_classifier.pt")):
         state_dict = torch.load(os.path.join(configs["load_exp_path"], "property_classifier.pt"), map_location=device, weights_only=True)
@@ -536,7 +537,7 @@ def load_encoder(configs, device):
     else:
         warnings.warn("No trained property regression model found!")
     print("")
-    return tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs
+    return tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs
 
 
 def generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device, sample_dir, embedding_dir, datasets=["physiclear"], splits=["train"]):
@@ -566,13 +567,14 @@ def generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device,
         data = json.load(open(os.path.join(sample_path, "data.json"), "r"))
         if data["split"] not in splits:
             continue
+        if "object" not in data.keys(): # Make sure sample has semantic object before adding to RAG embeddings
+            continue
         embedding_path = os.path.join(embedding_dir, f"{sample}.pt")
-        sensors = [get_dataset_sensor_type(dataset)]
         image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=load_exp_configs["flip_p"])
         tactile = os.path.join(sample_path, "tactile")
         tactile_frames, _ = get_frames(tactile, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
         tactile_frames = torch.unsqueeze(tactile_frames, dim=0)
-        tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+        tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None)
         torch.save(torch.squeeze(tactile_video_features.cpu(), dim=0), embedding_path)
         saved_count += 1
         if saved_count % 100 == 0:

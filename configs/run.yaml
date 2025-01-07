@@ -5,7 +5,7 @@ gpu_config: configs/gpu_config.json
 cuda: 0 # GPU device for non-LLM components
 seed: 0
 flip_p: 0.5
-load_exp_path: /home/user/Documents/octopi-s/data/exps/2025_01_04_21_23_26_train_llm_train_peft_test_reason_debug # Directory of pretrained encoder and/or multimodal LLM
+load_exp_path: /home/user/Documents/octopi-s/data/octopiv2_backup/exps/weights # Directory of pretrained encoder and/or multimodal LLM
 
 # Encoder
 use_clip: openai/clip-vit-large-patch14 # CLIP model to use for training
@@ -38,28 +38,25 @@ cutoff_len: 1024
 max_new_tokens: 500
 offload_dir: ./
 ## Files
-train_files: [] # Description / ranking QA file(s) for training
-test_files: [] # Description / ranking QA file(s) for testing
-reasoning_files: [/home/user/Documents/octopi-v2/data/schaeffler_demo_test/llm_qa/test_scenario_qa_unseen_samples.json] # Reasoning QA file(s)
+train_files: [/home/user/Documents/octopi-s/data/llm_qa/train_description_comparison_qa_octopi_s.json] # Description / ranking QA file(s) for training
+test_files: [/home/user/Documents/octopi-s/data/llm_qa/test_description_comparison_qa_octopi_s.json] # Description / ranking QA file(s) for testing
+reasoning_files: [/home/user/Documents/octopi-s/data/llm_qa/test_scenario_qa_octopi_s.json] # Reasoning QA file(s)
 ## Training
 llm_lr: 0.0001
 llm_gradient_accumulation_steps: 16 # Gradient accumulation steps for LLM training
 per_device_batch_size: 1
 ## Testing
-ranking_sampling: True
-ranking_sampling_num: 8
-ranking_temperature: 0.5
 ## Reasoning
 scenarios: null #
 generate_idx: [0,1] #
 user_stop_idx: 2 #
 rag: True # Whether to use RAG or not
-rag_generate_embeddings: True # Whether to generate new RAG embeddings using the tactile encoder from the current run
+rag_generate_embeddings: False # Whether to generate new RAG embeddings using the tactile encoder from the current run
 rag_sample_dir: data/samples # Directory of samples to generate RAG embeddings for
 embedding_dir: data/embeddings # Output directory for generated RAG embeddings
 rag_use_descriptions: True # Whether to use object descriptions for RAG
 retrieval_object_num: 5
-reasoning_sampling_num: 16 # 
+reasoning_sampling_num: 16 # Number of reasoning samples to generate for scoring
 reasoning_temperature: 0.8
 reasoning_selection_type: majority_voting # best_of_n
 ## Projection
