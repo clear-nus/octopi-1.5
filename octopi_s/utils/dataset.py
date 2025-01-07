@@ -449,7 +449,7 @@ class TactileLLMDataset(Dataset):
         else:
             # Descriptions and/or rankings
             question = self.tokenizer.apply_chat_template(sample["chat"][:-1], tokenize=False, add_generation_prompt=True)
-            answer = sample["chat"][-1]["content"] # NOTE: Original
+            answer = sample["chat"][-1]["content"]
             if "llama-3" in self.model_type:
                 answer_tokens = encode_text(self.tokenizer, answer + self.eot_token)
             else:

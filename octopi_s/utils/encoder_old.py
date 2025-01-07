@@ -353,9 +353,9 @@ class CLIPVisionEncoder(nn.Module):
         return frame_features
     
 
-class CLIPRFC(nn.Module):
+class Adapter(nn.Module):
     def __init__(self, input_size, output_size, residual_ratio):
-        super(CLIPRFC, self).__init__()
+        super(Adapter, self).__init__()
         self.act = nn.GELU()
         self.residual_ratio = residual_ratio
         self.rfc = nn.Sequential(
