@@ -298,7 +298,7 @@ def generate(question_embeds):
     return generation, generation_embeds, question_embeds
 
 
-def describe_rank(object_ids: str, describe: bool, rank: bool, property_type: Union[str, None] = None):
+def describe_rank(object_ids: str, describe: bool, rank: bool):
     object_ids = [int(i.strip()) for i in object_ids.split(",")]
     question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(demo_path, object_ids, describe=describe, rank=rank)
     generation, generation_embeds, question_embeds = generate(question_embeds)
@@ -362,13 +362,13 @@ def save_chat_history(user_input, generation):
 
 @app.post("/describe")
 def describe_objects(object_ids: str):
-    generation = describe_rank(object_ids, describe=True, rank=False, property_type=None)
+    generation = describe_rank(object_ids, describe=True, rank=False)
     return {"response": generation}
 
 
 @app.post("/rank")
-def rank_objects(object_ids: str, property_type: Union[str, None] = None):
-    generation = describe_rank(object_ids, describe=False, rank=True, property_type=property_type)
+def rank_objects(object_ids: str):
+    generation = describe_rank(object_ids, describe=False, rank=True)
     response_json = {"response": generation}
     ranks = generation.split("Object parts ranked")[1:]
     characters_to_replace = [model.tokenizer.eos_token, "=", ">"]
@@ -383,8 +383,8 @@ def rank_objects(object_ids: str, property_type: Union[str, None] = None):
 
 
 @app.post("/describe_and_rank")
-def describe_rank_objects(object_ids: str, property_type: Union[str, None] = None):
-    generation = describe_rank(object_ids, describe=True, rank=True, property_type=property_type)
+def describe_rank_objects(object_ids: str):
+    generation = describe_rank(object_ids, describe=True, rank=True)
     response_json = {"response": generation}
     ranks = generation.split("Object parts ranked")[1:]
     characters_to_replace = [model.tokenizer.eos_token, "=", ">"]

@@ -1,23 +1,23 @@
 # General
-data_dir: data/samples
+data_dir: data/samples # Directory of target samples
 exps_path: data/exps
 gpu_config: configs/gpu_config.json
-cuda: 0
+cuda: 0 # GPU device for non-LLM components
 seed: 0
 flip_p: 0.5
-load_exp_path: /home/user/Documents/octopi-s/data/exps/2025_01_04_21_23_26_train_llm_train_peft_test_reason_debug
+load_exp_path: /home/user/Documents/octopi-s/data/exps/2025_01_04_21_23_26_train_llm_train_peft_test_reason_debug # Directory of pretrained encoder and/or multimodal LLM
 
 # Encoder
-use_clip: openai/clip-vit-large-patch14
-frame_size: 224
+use_clip: openai/clip-vit-large-patch14 # CLIP model to use for training
+frame_size: 224 # Frame size input, tied to CLIP model type
 adapter_lr: 0.0005
-dim_context_vision: 1024
+dim_context_vision: 1024 # Input size of post-CLIP adapters, tied to CLIP model type
 residual_ratio: 0.5
 visualize_bins: 4
 max_frame_length: 10
 ## Prompt learning
 prompt_learning: True
-num_context_vision: 8
+num_context_vision: 8 # Number of learnable prompts per 
 num_context_sensor: 1
 prompt_depth_vision: 12
 num_context_text: 6
@@ -25,51 +25,49 @@ prompt_depth_text: 12
 dim_context_text: 768
 gate_prior: 5.
 ## Training
-tasks: ["property_regression", "tactile_contrastive"]
-datasets: ["physiclear", "physicleardotted", "hardness", "objectfolder"]
+tasks: ["property_regression", "tactile_contrastive"] # Training tasks
+datasets: ["physiclear", "physicleardotted", "hardness", "objectfolder"] # Datasets to use for training
 num_epochs: 30
 batch_size: 32
 num_distributed_contrastive_batches: 100
 gradient_checkpointing: True
-## Testing
-target_samples_path: data/schaeffler_test_set/unseen_samples/samples
 
 # LLM
-model_type: qwen2-vl-7b
+model_type: qwen2-vl-7b # LLM model to train with: llama-3.1-8b, qwen2.5-7b, qwen2-vl-7b
 cutoff_len: 1024
 max_new_tokens: 500
 offload_dir: ./
 ## Files
-train_files: []
-test_files: []
-reasoning_files: [/home/user/Documents/octopi-v2/data/schaeffler_demo_test/llm_qa/test_scenario_qa_unseen_samples.json]
+train_files: [] # Description / ranking QA file(s) for training
+test_files: [] # Description / ranking QA file(s) for testing
+reasoning_files: [/home/user/Documents/octopi-v2/data/schaeffler_demo_test/llm_qa/test_scenario_qa_unseen_samples.json] # Reasoning QA file(s)
 ## Training
 llm_lr: 0.0001
-llm_gradient_accumulation_steps: 16
+llm_gradient_accumulation_steps: 16 # Gradient accumulation steps for LLM training
 per_device_batch_size: 1
 ## Testing
 ranking_sampling: True
 ranking_sampling_num: 8
 ranking_temperature: 0.5
 ## Reasoning
-scenarios: null
-generate_idx: [0,1]
-user_stop_idx: 2
-rag: True
-rag_generate_embeddings: True
-rag_sample_dir: data/samples
-embedding_dir: data/embeddings
-rag_use_descriptions: True
+scenarios: null #
+generate_idx: [0,1] #
+user_stop_idx: 2 #
+rag: True # Whether to use RAG or not
+rag_generate_embeddings: True # Whether to generate new RAG embeddings using the tactile encoder from the current run
+rag_sample_dir: data/samples # Directory of samples to generate RAG embeddings for
+embedding_dir: data/embeddings # Output directory for generated RAG embeddings
+rag_use_descriptions: True # Whether to use object descriptions for RAG
 retrieval_object_num: 5
-reasoning_sampling_num: 16
+reasoning_sampling_num: 16 # 
 reasoning_temperature: 0.8
 reasoning_selection_type: majority_voting # best_of_n
 ## Projection
-max_train_steps: 5000
+max_train_steps: 5000 # Number of QA pairs to use for training
 freeze_projection: False
 projection_lr: 0.0005
 ## LoRA
-max_peft_train_steps: 1000
+max_peft_train_steps: 1000 # Number of QA pairs to use for PEFT (LoRA) training
 lora_alpha: 32
 r: 32
 lora_dropout: 0.05

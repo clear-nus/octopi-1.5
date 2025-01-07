@@ -1,13 +1,13 @@
 # General
-output_data_dir: data/llm_qa
+output_data_dir: data/llm_qa # QA pairs output directory
 use_parts: true
+open_set_texture: true
 
 # Description / ranking
-open_set_texture: true
-description_qa_train_num: 5000
-description_qa_test_num: 100
+description_qa_train_num: 5000 # Number of training QA pairs to generate for description and/or ranking
+description_qa_test_num: 100 # Number of test QA pairs to generate for description and/or ranking
 
 # Scenario reasoning
 reference_reasoning_qa_file: /home/user/Documents/octopi-v2/data/llm_qa/test_scenario_qa_1.json
 scenarios: ["guess_touch_from_objects_fruits", "guess_touch_from_objects_balls"]
-scenario_qa_test_num: 120
+scenario_qa_test_num: 120 # Number of test QA pairs to generate for scenario reasoning

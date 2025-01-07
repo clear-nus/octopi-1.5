@@ -8,16 +8,12 @@
 ## Data
 ### Processing PhysiCLeAR
 1. Create the directory `octopi_s/data/tactile_datasets`.
-2. Download the [PhysiCLeAR dataset](https://drive.google.com/drive/folders/1Gb6n-nGUQxaiuf1hZrgwSvbpl4SWihN4?usp=sharing).
+2. Download the [PhysiCLeAR dataset](https://drive.google.com/drive/folders/1qwMrXQO0um2TXSN2KZ8trvW09go04VT0?usp=sharing).
 3. Put the PhysiCLeAR dataset in `octopi_s/data/tactile_datasets/` as `octopi_s/data/tactile_datasets/physiclear/`.
 4. Run `python octopi_s/process_datasets.py --dataset_path octopi_s/data/tactile_datasets`.
 
 ### Generating Question-Answer (QA) Pairs
-1. Set these necessary configs in `configs/generate_qa.yaml`:
-  * output_data_dir: {QA pair output directory}
-  * description_qa_train_num: {Number of training QA pairs to generate for description and/or ranking}
-  * description_qa_test_num: {Number of test QA pairs to generate for description and/or ranking}
-  * scenario_qa_test_num: {Number of test QA pairs to generate for scenario reasoning}
+1. Set configs in `configs/generate_qa.yaml`.
 2. Run `python octopi_s/generate_qa.py`.
 3. Enter the scenario QA ID you want when prompted to make the QA file easily identifiable.
 
@@ -27,54 +23,49 @@
 1. Download [Octopi-S model weights]().
 2. Put the weights in `octopi_s/data/` as `octopi_s/data/weights/`.
 
-### Encoder
-1. Set these configs in `configs/run.yaml`:
-  * cuda: {GPU device number}
-  * load_exp_path: {Directory of pretrained encoder}
-  * retrieval_object_num: {Number of similar embeddings to use for RAG}
-  * embedding_dir: {Directory where RAG embeddings were saved from the previous step}
-  * target_samples_path: {Directory of processed sample tactile videos to get encoder retrieval performance for},
-TODO
-
 ### Multimodal LLM
 1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set these configs in `configs/run.yaml`:
-  * cuda: {GPU device number}
-  * load_exp_path: {Directory of pretrained multimodal LLM}
-  * data_dir: {Directory of target samples}
-  * rag_generate_embeddings: {Whether to generate RAG embeddings or not using the tactile video encoder the LLM was trained with}
-  * rag_sample_dir: {Directory of samples to generated RAG embeddings for}
-  * embedding_dir: {Output directory for generated RAG embeddings}
-3. Run `python octopi_s/run.py`.
-4. After you have generated a prediction JSON file (instructions above) for ranking and/or scenario reasoning, run `python octopi_s/evaluate_llm.py --llm_preds_path {results.json}`.
+2. Set configs in `configs/run.yaml` (note: put at least one file path in `test_files` or `reasoning_files` for it to test and set `train_files: []`).
+3. Run `python octopi_s/run_llm.py`.
+4. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
+5. After you have generated a prediction JSON file (instructions above) for ranking and/or scenario reasoning, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}`.
 
 
 ## Demo
-1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set these necessary configs in `configs/demo.yaml`:
-  * cuda: {GPU device number}
-  * load_exp_path: 
-  * train_encoder: True
-  * test_encoder: True
-3. Change directory into `octopi_s/`.
-4. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
+1. Change directory into `octopi_s/`.
+2. Set max GPU memory configs in `configs/gpu_config.json`.
+3. Set configs in `configs/demo.yaml` (note: absolute paths are preferred).
+4. For a `demo_path: ../data/demo` and `image_path: ../data/demo_videos/demo/rgb.png`, structure your directory like:
+├── configs
+│   └── ...
+├── data
+│   └── demo
+│       │── 1
+│       │   └── item.mov
+│       │── 2
+│       │   │── 1
+│       │   │   └── item.mov
+│       │   └── 2
+│       │       └── item.mov
+│       ├── ...
+│       └── rgb.png
+├── octopi_s
+│   └── ...
+└── ...
+where `../data/demo/1` contains the tactile video of an object with only one unique part (texture-wise) while `../data/demo/2` is an object with two unique parts.
+5. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
+6. Refer to the [API documentation](https://github.com/clear-nus/octopi-s/wiki/API) for more information on usage.
 
 
 ## Training
-Make sure you have processed the dataset(s) you want to train with.
+
+<!-- TODO -->
 ### Encoder
-1. You need around XX of GPU memory to train the encoder with...
-2. Set these configs in `configs/run.yaml`:
-  * cuda: {GPU device number}
-  * load_exp_path: null
-  * train_encoder: True
-  * test_encoder: True
-3. Run `python octopi_s/run.py`.
+1. Set configs in `configs/run.yaml`:
+2. Run `python octopi_s/train_encoder.py` (note: ou need around XX of GPU memory to train the encoder with...).
+3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
 
 ### Multimodal LLM
-1. Set these configs in `configs/run.yaml`:
-  * cuda: {GPU device number}
-  * load_exp_path: {Directory of pretrained encoder / MLLM}
-  * train_llm: True
-  * train_llm_peft: True
-2. Run `python octopi_s/run.py`.
+1. Set configs in `configs/run.yaml` (note: you must put at least one file path in `train_files` for it to train and set `test_files` and / or `reasoning_files` if you want it to test / reason as well).
+2. Run `python octopi_s/run_llm.py`.
+3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
