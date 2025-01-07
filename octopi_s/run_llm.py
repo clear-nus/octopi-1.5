@@ -1,6 +1,7 @@
 import itertools
 import os
-import re 
+import re
+import shutil 
 import torch.nn as nn 
 import torch 
 from torch.utils.data import DataLoader
@@ -22,6 +23,7 @@ from scipy.stats import kendalltau
 
 def run_llm(configs, exp_id, g, device, peft):
     # Prepare RAG embeddings for scenario reasoning
+    train = len(configs["train_files"]) > 0
     reason = len(configs["reasoning_files"]) > 0
     if reason:
         if configs["rag"]:
@@ -45,18 +47,18 @@ def run_llm(configs, exp_id, g, device, peft):
     os.makedirs(configs["offload_dir"], exist_ok=True)
     f = open(configs["gpu_config"])
     gpu_config = json.load(f)
-    model = load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_classes, peft, device, gpu_config, exp_id=None)
+    model = load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_classes, peft, device, gpu_config, exp_id=exp_id)
     tokenizer = model.tokenizer
 
     # Load datasets
     if configs["use_clip"]:
         image_processor = CLIPImageProcessor.from_pretrained(configs["use_clip"])
-    train = len(configs["train_files"]) > 0
     test = len(configs["test_files"]) > 0
     if train:
         train_dataset = TactileLLMDataset(image_processor, configs["train_files"], split_name="train", tokenizer=tokenizer, frame_size=configs["frame_size"], flip_p=configs["flip_p"], model_type=configs["model_type"])
         train_loader = DataLoader(train_dataset, batch_size=configs["per_device_batch_size"], shuffle=True, worker_init_fn=seed_worker, generator=g)
     if test:
+        
         test_dataset = TactileLLMDataset(image_processor, configs["test_files"], split_name="test", tokenizer=tokenizer, frame_size=configs["frame_size"], flip_p=configs["flip_p"], model_type=configs["model_type"])
         test_loader = DataLoader(test_dataset, batch_size=configs["per_device_batch_size"], shuffle=False, worker_init_fn=seed_worker, generator=g)
     if reason:
@@ -150,6 +152,9 @@ def run_llm(configs, exp_id, g, device, peft):
             model.llm.save_pretrained(f"{configs['exps_path']}/{exp_id}/llm_weights")
         torch.save(model.encoder.state_dict(), f"{configs['exps_path']}/{exp_id}/tactile_encoder.pt")
         torch.save(model.project.state_dict(), f"{configs['exps_path']}/{exp_id}/project.pt")
+        torch.save(model.tactile_vificlip.state_dict(), f"{configs['exps_path']}/{exp_id}/tactile_vificlip.pt")
+        if os.path.exists(os.path.join(configs['load_exps_path'], "prompt_learning.yaml")):
+            shutil.copy(os.path.join(configs['load_exps_path'], "prompt_learning.yaml"), f"{configs['exps_path']}/{exp_id}/prompt_learning.yaml")
         print(f"LLM finetuning done!")
 
     # Testing
@@ -159,7 +164,6 @@ def run_llm(configs, exp_id, g, device, peft):
             param.requires_grad = False
         model.eval()
         preds = []
-        # beam_dict = {}
         with torch.no_grad():
             for test_sample_step, batch in enumerate(tqdm.tqdm(test_loader)):
                 all_objects, sample_paths = [], []
@@ -198,7 +202,6 @@ def run_llm(configs, exp_id, g, device, peft):
         for name, param in model.named_parameters():
             param.requires_grad = False
         model.eval()
-        # mse_loss_fn = torch.nn.MSELoss()
         all_reason = {}
         sample_no = {}
         with torch.no_grad():
@@ -347,7 +350,7 @@ if __name__ == "__main__":
         exp_name = "debug"
     exp_id = "_llm"
     if len(configs["train_files"]) > 0:
-        exp_id += "_train_peft"
+        exp_id += "_train"
     if len(configs["test_files"]) > 0:
         exp_id += "_test"
     if len(configs["reasoning_files"]) > 0:
@@ -361,7 +364,7 @@ if __name__ == "__main__":
     exp_id = exp_date + exp_id
     os.makedirs(f"{configs['exps_path']}", exist_ok=True)
     os.makedirs(f"{configs['exps_path']}/{exp_id}", exist_ok=True)
-    if len(configs["train_files"]) > 0:
+    if len(configs["train_files"]) > 0 or len(configs["test_files"]) > 0:
         os.makedirs(f"{configs['exps_path']}/{exp_id}/preds", exist_ok=True)
     if len(configs["reasoning_files"]) > 0:
         os.makedirs(f"{configs['exps_path']}/{exp_id}/reason", exist_ok=True)
@@ -388,7 +391,7 @@ if __name__ == "__main__":
     if len(configs["train_files"]) > 0:
         run_llm(configs, exp_id, g, device, peft=False)
         configs["load_exp_path"] = f"{configs['exps_path']}/{exp_id}"
-        run_llm(configs, exp_id, g, device, peft=True)
-        configs["load_exp_path"] = f"{configs['exps_path']}/{exp_id}"
-    if len(configs["train_files"]) == 0 and len(configs["reasoning_files"]) > 0:
+        # run_llm(configs, exp_id, g, device, peft=True)
+        # configs["load_exp_path"] = f"{configs['exps_path']}/{exp_id}"
+    elif len(configs["test_files"]) > 0 or len(configs["reasoning_files"]) > 0:
         run_llm(configs, exp_id, g, device, peft=False)

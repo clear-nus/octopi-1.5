@@ -172,12 +172,10 @@ def get_tactile_videos(demo_path, object_ids, replace=True):
                 num_parts = len([i for i in os.listdir(sample_path) if os.path.isdir(os.path.join(sample_path, i)) and i != "frames"])
                 if num_parts <= 1:
                     # One object part only
-                    # sample_video_path = os.path.join(sample_path, "item.mov") # FIXME
-                    sample_video_path = os.path.join(sample_path, f"{sample_int}.mov")
+                    sample_video_path = os.path.join(sample_path, f"item.mov")
                     sample_frame_path = os.path.join(sample_path, "frames")
                     if os.path.exists(sample_frame_path) and replace:
                         shutil.rmtree(sample_frame_path)
-                        # print("replaced")
                     if not os.path.exists(sample_frame_path):
                         os.makedirs(sample_frame_path, exist_ok=True)
                         extract_span(sample_video_path, sample_frame_path, threshold=0, min_len=5, max_len=10, top_frame_num=50)
@@ -229,7 +227,6 @@ def get_tactile_embeds(demo_path, object_ids, describe, rank):
         describe = True
         rank = False
     if num_objects <= 1:
-        # NOTE: Ranking does not work well for this, maybe because it was always trained with 2 or more objects (not object parts) for ranking
         if describe and rank:
             task_prompt[0] = "Describe the object in the following tactile video(s) and rank them in decreasing hardness and roughness.\n\n"
         elif describe:
@@ -278,24 +275,9 @@ def generate(question_embeds):
         end = datetime.now()
         elapsed = (end - start).total_seconds()
         print(f"Loaded embedding history in {elapsed} seconds for length={prev_embeds.shape[1]}.")
-    start = datetime.now()
-    generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=1, num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
-    generation = model.tokenizer.decode(generation_tokens[0]) # https://huggingface.co/docs/transformers/main/llm_tutorial
-    generation_embeds = model.llm.get_input_embeddings()(generation_tokens)
-    generated_length = generation_embeds.shape[1]
-    end = datetime.now()
-    ttft = (end - start).total_seconds()
-    print(f"LLM generated length={generated_length} in {ttft} seconds for question length={question_embeds.shape[1]}.")
-    start = datetime.now()
     generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=demo_configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
     generation = model.tokenizer.decode(generation_tokens[0]) # https://huggingface.co/docs/transformers/main/llm_tutorial
     generation_embeds = model.llm.get_input_embeddings()(generation_tokens)
-    generated_length = generation_embeds.shape[1]
-    end = datetime.now()
-    elapsed = (end - start).total_seconds()
-    tpot = (elapsed - ttft) / (generated_length - 1)
-    print(f"LLM generated length={generated_length} in {elapsed} seconds for question length={question_embeds.shape[1]}.")
-    print(f"Time per output token: {tpot} seconds.")
     return generation, generation_embeds, question_embeds
 
 
@@ -303,17 +285,19 @@ def describe_rank(object_ids: str, describe: bool, rank: bool):
     object_ids = [int(i.strip()) for i in object_ids.split(",")]
     question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(demo_path, object_ids, describe=describe, rank=rank)
     generation, generation_embeds, question_embeds = generate(question_embeds)
+    print(question, generation)
     if demo_configs["rag"] and describe:
         generation = generation.replace(model.tokenizer.eos_token, "")
         descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
         part_count = 0
         for obj_count, description in enumerate(descriptions):
             description = description.strip().strip("\n")
+            print(description)
             if "Part" not in description:
                 description += "\nMost similar objects (in order of decreasing similarity):"
                 for obj_name, obj_descriptions in rag_outputs[part_count].items():
                     if demo_configs["rag_use_descriptions"]:
-                        description += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
+                        description += f" {obj_name} ({', '.join(sorted([i for i in obj_descriptions]))});"
                     else:
                         description += f" {obj_name};"
                 part_count += 1
@@ -325,7 +309,7 @@ def describe_rank(object_ids: str, describe: bool, rank: bool):
                     parts[p] += "\nMost similar objects (in order of decreasing similarity):"
                     for obj_name, obj_descriptions in rag_outputs[part_count].items():
                         if demo_configs["rag_use_descriptions"]:
-                            parts[p] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
+                            parts[p] += f" {obj_name} ({', '.join(sorted([i for i in obj_descriptions]))});"
                         else:
                             parts[p] += f" {obj_name};"
                     if p != len(parts) - 1:
@@ -397,47 +381,6 @@ def describe_rank_objects(object_ids: str):
         rank = rank.split(",")
         response_json[prop] = [i.strip().strip(".") for i in rank]
     return response_json
-
-
-# @app.post("/describe_rgb")
-# def describe_rgb(prompt: str):
-#     # NOTE: Does not save into chat history or embedding history, only for demo purposes on the UI
-#     def encode_image(image_path):
-#         with open(image_path, "rb") as image_file:
-#             return base64.b64encode(image_file.read()).decode("utf-8")
-# # ChatGPT configs
-# load_dotenv(configs["dotenv_path"])
-# YOUR_ORG_ID = os.environ.get("OPENAI_ORG_ID")
-# YOUR_API_KEY = os.environ.get("OPENAI_API_KEY")
-#     model = configs["openai_model"]
-#     image_path = configs["image_path"]
-#     client = OpenAI(
-#         organization=YOUR_ORG_ID,
-#         api_key=YOUR_API_KEY,
-#     )
-#     base64_image = encode_image(image_path)
-#     completion = client.chat.completions.create(
-#         model=model,
-#         messages=[
-#             {"role": "user", "content": [
-#                 {"type": "text", "text": prompt},
-#                 {"type": "image_url", "image_url": {
-#                     "url": f"data:image/png;base64,{base64_image}"}
-#                 }
-#             ]}
-#         ],
-#         temperature=0.0
-#     )
-#     generation = completion.choices[0].message.content
-#     response = {
-#         "generation": generation,
-#     }
-#     objects = generation.split("Object 1")[-1].split("\n")
-#     final_objects = []
-#     for obj in objects:
-#         final_objects.append(obj.split(":")[-1].strip()[:-1].lower())
-#     response["objects"] = final_objects
-#     return {"response": response}
 
 
 @app.post("/describe_rgb")

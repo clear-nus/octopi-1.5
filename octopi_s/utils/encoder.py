@@ -504,6 +504,8 @@ def load_encoder(configs, device):
     if "prompt_learning.yaml" in os.listdir(configs["load_exp_path"]):
         prompt_learning_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "prompt_learning.yaml")))
         clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs).to(device)
+    else:
+        clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
     tactile_vificlip = ViFiCLIP(clip, freeze_text_encoder=True, use_positional_embeds=True).to(device)
     if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
         state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True)
@@ -587,7 +589,7 @@ def get_rag_embeddings(configs, device):
     sample_tactile_paths = []
     saved_embeddings = []
     for embedding in os.listdir(configs["embedding_dir"]):
-        sample_path = os.path.join(configs["data_dir"], embedding.split(".")[0])
+        sample_path = os.path.join(configs["rag_sample_dir"], embedding.split(".")[0])
         sample_tactile_paths.append(os.path.join(sample_path, "tactile"))
         data = json.load(open(os.path.join(sample_path, "data.json"), "r"))
         object_id = data["object_id"]
