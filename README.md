@@ -63,7 +63,8 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 
 <!-- TODO -->
 ### Encoder
-1. Set configs in `configs/run.yaml` (note: you can set `load_exp_path` if you want to start from a checkpoint).
+1. Set configs in `configs/run.yaml`.
+    * Set `load_exp_path` if you want to start from a checkpoint.
 2. Run `python octopi_s/train_encoder.py` (note: ou need around XX of GPU memory to train the encoder with...).
 3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
 
