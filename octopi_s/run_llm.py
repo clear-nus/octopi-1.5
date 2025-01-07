@@ -223,8 +223,8 @@ def run_llm(configs, exp_id, g, device, peft):
                     sample_no[scenario] = 1
                 else:
                     sample_no[scenario] += 1
-                if configs["user_stop_idx"] is not None:
-                    chat = chat[:int(configs["user_stop_idx"]*2)]
+                if configs["answer_step_idx"] is not None:
+                    chat = chat[:int(configs["answer_step_idx"]*2)]
                 for c in range(len(chat)-1):
                     # NOTE: Only for batch size = 1
                     chat[c] = {k:v[0] for k,v in chat[c].items()}
@@ -259,7 +259,6 @@ def run_llm(configs, exp_id, g, device, peft):
                                     chat[c]["content"] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
                                 else:
                                     chat[c]["content"] += f" {obj_name};"
-                            chat[c]["content"] = chat[c]["content"][:-1]
                 final_question = [tokenizer.apply_chat_template(generated_chat, tokenize=False, add_generation_prompt=True)]
                 final_true_answer = chat[-1]["content"][0]
                 _, question_embeds = model(question=final_question, tactile_frames=tactile_frames, answer_tokens=None, all_datasets=all_datasets, all_indices=all_indices, question_embeds_only=True)
@@ -307,7 +306,7 @@ def run_llm(configs, exp_id, g, device, peft):
                     "num_candidates": num_candidates.item(),
                     "chat": generated_chat,
                     "generate_idx": configs["generate_idx"],
-                    "user_stop_idx": configs["user_stop_idx"],
+                    "answer_step_idx": configs["answer_step_idx"],
                     "reasoning_sampling_num": configs["reasoning_sampling_num"],
                     "reasoning_selection_type": configs["reasoning_selection_type"],
                     "final_true_answer": final_true_answer,

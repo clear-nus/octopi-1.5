@@ -45,11 +45,10 @@ reasoning_files: [/home/user/Documents/octopi-s/data/llm_qa/test_scenario_qa_oct
 llm_lr: 0.0001
 llm_gradient_accumulation_steps: 16 # Gradient accumulation steps for LLM training
 per_device_batch_size: 1
-## Testing
 ## Reasoning
-scenarios: null #
-generate_idx: [0,1] #
-user_stop_idx: 2 #
+scenarios: null 
+generate_idx: [0,1] # Answer step(s) to generate respones for
+answer_step_idx: 2 # Answer step to stop chat
 rag: True # Whether to use RAG or not
 rag_generate_embeddings: False # Whether to generate new RAG embeddings using the tactile encoder from the current run
 rag_sample_dir: data/samples # Directory of samples to generate RAG embeddings for

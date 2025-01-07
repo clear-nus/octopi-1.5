@@ -15,7 +15,7 @@
 ### Generating Question-Answer (QA) Pairs
 1. Set configs in `configs/generate_qa.yaml`.
 2. Run `python octopi_s/generate_qa.py`.
-3. Enter the scenario QA ID you want when prompted to make the QA file easily identifiable.
+3. Enter the scenario QA ID you want when prompted to make the QA files easily identifiable.
 
 
 ## Testing
