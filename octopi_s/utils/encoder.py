@@ -4,7 +4,7 @@ from transformers import CLIPVisionModel
 from transformers.models.clip.modeling_clip import CLIPModel, CLIPVisionTransformer, CLIPTextTransformer, CLIPEncoder, CLIPEncoderLayer, _create_4d_causal_attention_mask, _prepare_4d_attention_mask
 from transformers.modeling_outputs import BaseModelOutput, BaseModelOutputWithPooling
 from typing import Any, Optional, Tuple, Union
-from .dataset import get_dataset_img_norm, get_frames, get_dataset_sensor_type, get_image_transforms
+from .dataset import get_frames, get_dataset_sensor_type, get_image_transforms
 import os, json, yaml, warnings
 
 from utils.dataset import get_dataset_sensor_type
@@ -638,8 +638,8 @@ def load_encoder(configs, device):
         prompt_learning_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "prompt_learning.yaml")))
         prompt_learning_configs["num_context_sensor"] = 0 # NOTE
         clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs, sensors).to(device)
-    else:
-        clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
+    # else:
+    #     clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
     tactile_vificlip = ViFiCLIP(clip, freeze_text_encoder=True, use_positional_embeds=True).to(device)
     if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
         state_dict = torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True)

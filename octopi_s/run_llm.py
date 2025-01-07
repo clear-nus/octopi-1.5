@@ -25,9 +25,9 @@ def run_llm(configs, exp_id, g, device, peft):
     reason = len(configs["reasoning_files"]) > 0
     if reason:
         if configs["rag"]:
-            print("\nGenerating RAG embeddings...")
             tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
             if configs["rag_generate_embeddings"]:
+                print("\nGenerating RAG embeddings...")
                 generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device, configs["rag_sample_dir"], configs["embedding_dir"])
             del tactile_adapter
             del property_classifier

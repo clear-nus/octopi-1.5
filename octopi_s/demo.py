@@ -1,6 +1,5 @@
 from typing import Union
 from fastapi import FastAPI
-import matplotlib.pyplot as plt
 import torch
 import natsort
 import cv2 as cv
@@ -8,28 +7,21 @@ import yaml, os
 import torch, os, yaml
 from utils.encoder import *
 from utils.llm import *
-from utils.dataset import get_rag_tactile_paths
+from utils.dataset import *
 from transformers import CLIPImageProcessor, AutoProcessor
 from transformers.utils import logging
-from fastapi.responses import Response
 import numpy as np
 import shutil
-from PIL import Image
-import base64
-from openai import OpenAI
-import random
 import os
-from dotenv import load_dotenv
 from datetime import datetime
 from qwen_vl_utils import process_vision_info
-import warnings
 
 
 # API
 app = FastAPI()
 logging.set_verbosity_error()
 
-# Load models
+# Run settings
 run_type = f"demo"
 demo_config_path = f'../configs/{run_type}.yaml'
 demo_configs = yaml.safe_load(open(demo_config_path))
@@ -38,50 +30,39 @@ device = f'cuda:{device_num}'
 load_exp_path = demo_configs["load_exp_path"]
 f = open(demo_configs["gpu_config"])
 gpu_config = json.load(f)
-configs = yaml.safe_load(open(os.path.join(load_exp_path, "run.yaml")))
-configs.update(demo_configs)
-peft = "peft" in configs["load_exp_path"]
-_, model_path, new_tokens, no_split_module_classes = get_model_details(configs["model_type"])
-tokenizer_path = os.path.join(configs["load_exp_path"], "tokenizer")
-start = datetime.now()
-model = load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_classes, peft, device, gpu_config, exp_id=None)
-if configs["use_clip"]:
-    image_processor = CLIPImageProcessor.from_pretrained(configs["use_clip"])
-end = datetime.now()
-elapsed = (end - start).total_seconds()
-print(f"Loaded model in {elapsed} seconds.")
-
-# Settings
-demo_path = configs["demo_path"]
-embedding_history_path = configs["embedding_history_path"]
-chat_path = configs["chat_path"]
+demo_path = demo_configs["demo_path"]
+embedding_history_path = demo_configs["embedding_history_path"]
+chat_path = demo_configs["chat_path"]
+dataset = "physiclear" # NOTE: Assume the tactile inputs uses GelSight Mini
 
 # RAG
-if configs["rag"]:
-    if "prompt_learning.yaml" in os.listdir(configs["load_exp_path"]):
-        prompt_learning_configs = yaml.safe_load(open(os.path.join(configs["load_exp_path"], "prompt_learning.yaml")))
-        clip = PromptLearningCLIPModel.from_pretrained(prompt_learning_configs["use_clip"], prompt_learning_configs).to(device)
-    else:
-        clip = CLIPModel.from_pretrained(configs["use_clip"]).to(device)
-    tactile_vificlip = ViFiCLIP(clip, freeze_text_encoder=True, use_positional_embeds=True).to(device)
-    if os.path.exists(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt")):
-        tactile_vificlip.load_state_dict(torch.load(os.path.join(configs["load_exp_path"], "tactile_vificlip.pt"), map_location=device, weights_only=True), strict=False)
-        print("Loaded tactile ViFi-CLIP for RAG!")
-    else:
-        warnings.warn("No trained tactile ViFi-CLIP model found for RAG!")
-    tactile_vificlip.eval()
-    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(configs["embedding_dir"], configs["data_dir"])
-    saved_embeddings = saved_embeddings.to(device)
+tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
+image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=0)
+if demo_configs["rag"]:
+    if demo_configs["rag_generate_embeddings"]:
+        print("\nGenerating RAG embeddings...")
+        generate_rag_embeddings(demo_configs, load_exp_configs, tactile_vificlip, device, demo_configs["rag_sample_dir"], demo_configs["embedding_dir"])
+    del tactile_adapter
+    del property_classifier
+    saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
 else:
     tactile_vificlip = None
     saved_embeddings = None
     sample_tactile_paths = None
     object_ids = None
 
-# # ChatGPT configs
-# load_dotenv(configs["dotenv_path"])
-# YOUR_ORG_ID = os.environ.get("OPENAI_ORG_ID")
-# YOUR_API_KEY = os.environ.get("OPENAI_API_KEY")
+# Load models
+load_exp_configs = yaml.safe_load(open(os.path.join(load_exp_path, "run.yaml")))
+peft = "peft" in demo_configs["load_exp_path"]
+tokenizer_path, model_path, new_tokens, no_split_module_classes = get_model_details(load_exp_configs["model_type"])
+load_exp_configs.update(demo_configs)
+start = datetime.now()
+model = load_mllm(load_exp_configs, tokenizer_path, model_path, new_tokens, no_split_module_classes, peft, device, gpu_config, exp_id=None)
+if load_exp_configs["use_clip"]:
+    image_processor = CLIPImageProcessor.from_pretrained(load_exp_configs["use_clip"])
+end = datetime.now()
+elapsed = (end - start).total_seconds()
+print(f"Loaded model in {elapsed} seconds.")
 
 
 def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_len, top_frame_num):
@@ -102,17 +83,19 @@ def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_l
         second_max_count = 0
         span, indices, max_indices, second_max_indices = [], [], [], []
         count = 0
-        for i in range(1, len(arr)):
+        arr_by_image = natsort.natsorted(arr, key=lambda t: t[0])
+        arr_by_image = [i[0] for i in arr_by_image]
+        for i in range(1, len(arr_by_image)):
             # Check if the current element is equal to previous element +1
-            frame_id = int(arr[i].split("/")[-1].split(".")[0])
-            prev_frame_id = int(arr[i-1].split("/")[-1].split(".")[0])
+            frame_id = int(arr_by_image[i].split("/")[-1].split(".")[0])
+            prev_frame_id = int(arr_by_image[i-1].split("/")[-1].split(".")[0])
             if frame_id == prev_frame_id + 1:
                 if count == 0:
-                    span.append(arr[i-1])
+                    span.append(arr_by_image[i-1])
                     count += 1
                     # indices.append(i-1)
                 count += 1
-                span.append(arr[i])
+                span.append(arr_by_image[i])
                 # indices.append(i)
             # Reset the count
             else:
@@ -135,10 +118,9 @@ def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_l
         try:
             return max_span, max_indices, None, None
         except UnboundLocalError:
-            # If there is no continuous span, get a random frame
-            idx = random.randrange(0, len(arr))
-            max_span = [arr[idx]]
-            max_indices = [idx]
+            # If there is no continuous span, get frame with the biggest difference
+            max_span = [arr[0][0]]
+            max_indices = []
             return max_span, max_indices, None, None
             
     extract_frames(sample_video_path, sample_frame_path)
@@ -160,8 +142,6 @@ def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_l
         all_diffs.append((frame, total_diff))
         prev_frame_gray = frame_gray
     all_diffs = sorted(all_diffs, key=lambda t: t[1], reverse=True)[:top_frame_num]
-    all_diffs = sorted(all_diffs, key=lambda t: t[0])
-    all_diffs = [i[0] for i in all_diffs]
     # 2) Get continuous spans
     max_span, max_indices, second_max_span, second_max_indices = find_longest_spans(all_diffs)
     if second_max_indices is not None:
@@ -191,7 +171,7 @@ def get_tactile_videos(demo_path, object_ids, replace=True):
                 num_parts = len([i for i in os.listdir(sample_path) if os.path.isdir(os.path.join(sample_path, i)) and i != "frames"])
                 if num_parts <= 1:
                     # One object part only
-                    # sample_video_path = os.path.join(sample_path, "item.mov") # NOTE NOTE NOTE
+                    # sample_video_path = os.path.join(sample_path, "item.mov") # FIXME
                     sample_video_path = os.path.join(sample_path, f"{sample_int}.mov")
                     sample_frame_path = os.path.join(sample_path, "frames")
                     if os.path.exists(sample_frame_path) and replace:
@@ -265,28 +245,27 @@ def get_tactile_embeds(demo_path, object_ids, describe, rank):
     with torch.no_grad():
         question = task_prompt.copy()
         tactile_count = 0
-        if configs["rag"] and describe:
+        if demo_configs["rag"] and describe:
             rag_outputs = []
         else:
             rag_outputs = None
         for q in range(len(question)):
             if question[q] == "<tact_tokens>":
-                # NOTE: Assume no dotted samples
-                sensors = [get_dataset_sensor_type_old]
+                # NOTE: Assume only non-dotted PhysiCLeAR samples
                 tactile_path = tactile_paths_flattened[tactile_count]
-                if configs["rag"] and describe:
-                    tactile_frames, _ = get_frames(tactile_path, None, image_transforms, frame_size=configs["frame_size"], train=False, return_indices=True)
-                    obj_name_description_map = get_rag_tactile_paths(tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, rag_object_ids, device, retrieval_object_num=configs["retrieval_object_num"])
+                if demo_configs["rag"] and describe:
+                    tactile_frames, _ = get_frames(tactile_path, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
+                    obj_name_description_map = get_rag_tactile_paths(tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, rag_object_ids, device, retrieval_object_num=demo_configs["retrieval_object_num"])
                     rag_outputs.append(obj_name_description_map)
                 question[q] = f"[{tactile_path}]"
                 tactile_count += 1
         joined_question = "".join(question)
-        print(f"Question: {joined_question}")
+        # print(f"Question: {joined_question}")
         messages = [
             {"role": "user", "content": joined_question}
         ]
         question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, configs["frame_size"], image_transforms)
+        question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, load_exp_configs["frame_size"], image_transforms)
         return question_embeds, joined_question, tactile_paths, rag_outputs
     
 
@@ -307,7 +286,7 @@ def generate(question_embeds):
     ttft = (end - start).total_seconds()
     print(f"LLM generated length={generated_length} in {ttft} seconds for question length={question_embeds.shape[1]}.")
     start = datetime.now()
-    generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
+    generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=demo_configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
     generation = model.tokenizer.decode(generation_tokens[0]) # https://huggingface.co/docs/transformers/main/llm_tutorial
     generation_embeds = model.llm.get_input_embeddings()(generation_tokens)
     generated_length = generation_embeds.shape[1]
@@ -323,7 +302,7 @@ def describe_rank(object_ids: str, describe: bool, rank: bool, property_type: Un
     object_ids = [int(i.strip()) for i in object_ids.split(",")]
     question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(demo_path, object_ids, describe=describe, rank=rank)
     generation, generation_embeds, question_embeds = generate(question_embeds)
-    if configs["rag"] and describe:
+    if demo_configs["rag"] and describe:
         generation = generation.replace(model.tokenizer.eos_token, "")
         descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
         part_count = 0
@@ -332,8 +311,10 @@ def describe_rank(object_ids: str, describe: bool, rank: bool, property_type: Un
             if "Part" not in description:
                 description += "\nMost similar objects (in order of decreasing similarity):"
                 for obj_name, obj_descriptions in rag_outputs[part_count].items():
-                    # chat[c]["content"] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
-                   description += f" {obj_name};"
+                    if demo_configs["rag_use_descriptions"]:
+                        description += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
+                    else:
+                        description += f" {obj_name};"
                 part_count += 1
             else:
                 obj_id = description.split("Part")[0]
@@ -342,8 +323,10 @@ def describe_rank(object_ids: str, describe: bool, rank: bool, property_type: Un
                     parts[p] = parts[p].strip().strip("\n")
                     parts[p] += "\nMost similar objects (in order of decreasing similarity):"
                     for obj_name, obj_descriptions in rag_outputs[part_count].items():
-                        # chat[c]["content"] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
-                        parts[p] += f" {obj_name};"
+                        if demo_configs["rag_use_descriptions"]:
+                            parts[p] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
+                        else:
+                            parts[p] += f" {obj_name};"
                     if p != len(parts) - 1:
                         parts[p] += "\n"
                     part_count += 1
@@ -421,7 +404,10 @@ def describe_rank_objects(object_ids: str, property_type: Union[str, None] = Non
 #     def encode_image(image_path):
 #         with open(image_path, "rb") as image_file:
 #             return base64.b64encode(image_file.read()).decode("utf-8")
-
+# # ChatGPT configs
+# load_dotenv(configs["dotenv_path"])
+# YOUR_ORG_ID = os.environ.get("OPENAI_ORG_ID")
+# YOUR_API_KEY = os.environ.get("OPENAI_API_KEY")
 #     model = configs["openai_model"]
 #     image_path = configs["image_path"]
 #     client = OpenAI(
@@ -463,7 +449,7 @@ def describe_rgb(prompt: str):
             "content": [
                 {
                     "type": "image",
-                    "image": configs["image_path"],
+                    "image": demo_configs["image_path"],
                 },
                 {"type": "text", "text": prompt},
             ],
@@ -515,7 +501,7 @@ def guess_touch_given_objects(object_candidates: str):
         {"role": "user", "content": task_prompt}
     ]
     question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, configs["frame_size"], image_transforms)
+    question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, load_exp_configs["frame_size"], image_transforms)
     generation, generation_embeds, question_embeds = generate(question_embeds)
     embeds = torch.cat([question_embeds, generation_embeds], dim=1)
     torch.save(embeds, embedding_history_path)
@@ -529,7 +515,7 @@ def ask(query: str):
         {"role": "user", "content": query}
     ]
     question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-    question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, configs["frame_size"], image_transforms)
+    question_embeds = process_user_input(question_template, image_processor, model, model.tokenizer, device, new_tokens, load_exp_configs["frame_size"], image_transforms)
     generation, generation_embeds, question_embeds = generate(question_embeds)
     embeds = torch.cat([question_embeds, generation_embeds], dim=1)
     torch.save(embeds, embedding_history_path)

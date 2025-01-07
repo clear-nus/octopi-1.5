@@ -15,32 +15,6 @@ from typing import TypeVar, Optional, Iterator
 T_co = TypeVar('T_co', covariant=True)
 
 
-def get_frames(frames_path, image_processor, image_transforms, frame_size, train=True, return_indices=False):
-    # Get relevant object(s) and their frames
-    image_tensors = []
-    all_obj_sample_frames = natsort.natsorted(os.path.join(frames_path, i) for i in os.listdir(frames_path))
-    frame_indices = natsort.natsorted([int(i.split("/")[-1].split(".")[0]) for i in all_obj_sample_frames])
-    # Process images
-    image = Image.open(all_obj_sample_frames[0]).convert("RGB")
-    image = image_transforms(image)
-    if train:
-        i, j, _, _ = transforms.RandomCrop.get_params(image, output_size=(frame_size, frame_size))
-        image = crop(image, i, j, frame_size, frame_size)
-    image_tensors.append(image)
-    for frame in all_obj_sample_frames[1:]:
-        image = Image.open(frame).convert("RGB")
-        image = image_transforms(image)
-        if train:
-            image = crop(image, i, j, frame_size, frame_size)
-        image_tensors.append(image)
-    image_tensors = torch.stack(image_tensors, dim=0) # (l, c, h, w)
-    if return_indices:
-        frame_indices = [int(i.split("/")[-1].split(".")[0]) for i in all_obj_sample_frames]
-        return image_tensors, frame_indices
-    else:
-        return image_tensors
-
-
 def regression_collate_fn(data):
     # Images
     max_frame_length = 0
@@ -107,33 +81,7 @@ class TactilePropertyRegressionDataset(Dataset):
         dataset = random.choice(self.datasets)
         index = index % len(self.tactile[dataset])
         # 2) Get tactile data
-        # NOTE: Old transforms
-        # transforms_list = [
-        #     transforms.ToTensor(),
-        #     transforms.Resize(self.frame_size, interpolation=3),
-        #     transforms.Normalize(
-        #         mean=[0.48145466, 0.4578275, 0.40821073],
-        #         std=[0.26862954, 0.26130258, 0.27577711]
-        #     )
-        # ]
-        mean, std = get_dataset_img_norm(dataset)
-        transforms_list = [transforms.Resize(self.frame_size, interpolation=3)]
-        transforms_list += [
-            transforms.ToTensor(),
-            transforms.Normalize(
-                mean=mean,
-                std=std
-            )
-        ]
-        if self.split_name == "train":
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomHorizontalFlip(1))
-            if random.random() < self.flip_p:
-                transforms_list.append(transforms.RandomVerticalFlip(1))
-        else:
-            transforms_list.append(transforms.CenterCrop(self.frame_size))
-        image_transforms = transforms.Compose(transforms_list)
-        # NOTE
+        image_transforms = get_image_transforms(self.frame_size, dataset, split_name=self.split_name, flip_p=self.flip_p)
         # 2) Get tactile data
         tactile = self.tactile[dataset][index]
         all_tactile_frames = []
@@ -196,12 +144,28 @@ class TactileTactileContrastiveDataset(Dataset):
         dataset = random.choice(self.datasets)
         index = index % len(self.tactile[dataset])
         # 2) Get tactile data
-        transforms_list = [
+        # transforms_list = [
+        #     transforms.ToTensor(),
+        #     transforms.Resize(self.frame_size, interpolation=3),
+        #     transforms.Normalize(
+        #         mean=[0.48145466, 0.4578275, 0.40821073],
+        #         std=[0.26862954, 0.26130258, 0.27577711]
+        #     )
+        # ]
+        # if self.split_name == "train":
+        #     if random.random() < self.flip_p:
+        #         transforms_list.append(transforms.RandomHorizontalFlip(1))
+        #     if random.random() < self.flip_p:
+        #         transforms_list.append(transforms.RandomVerticalFlip(1))
+        # transforms_list.append(transforms.CenterCrop(self.frame_size))
+        # image_transforms = transforms.Compose(transforms_list)
+        mean, std = get_dataset_img_norm(dataset)
+        transforms_list = [transforms.Resize(self.frame_size, interpolation=3)]
+        transforms_list += [
             transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
             transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
+                mean=mean,
+                std=std
             )
         ]
         if self.split_name == "train":
@@ -209,7 +173,8 @@ class TactileTactileContrastiveDataset(Dataset):
                 transforms_list.append(transforms.RandomHorizontalFlip(1))
             if random.random() < self.flip_p:
                 transforms_list.append(transforms.RandomVerticalFlip(1))
-        transforms_list.append(transforms.CenterCrop(self.frame_size))
+        else:
+            transforms_list.append(transforms.CenterCrop(self.frame_size))
         image_transforms = transforms.Compose(transforms_list)
         valid_current_object_id = False
         current_object_id = self.object_id[dataset][index]
@@ -371,12 +336,28 @@ class TactileTactileContrastiveDistributedDataset(Dataset):
         return len(self.all_tactile)
 
     def __getitem__(self, index):
-        transforms_list = [
+        # transforms_list = [
+        #     transforms.ToTensor(),
+        #     transforms.Resize(self.frame_size, interpolation=3),
+        #     transforms.Normalize(
+        #         mean=[0.48145466, 0.4578275, 0.40821073],
+        #         std=[0.26862954, 0.26130258, 0.27577711]
+        #     )
+        # ]
+        # if self.split_name == "train":
+        #     if random.random() < self.flip_p:
+        #         transforms_list.append(transforms.RandomHorizontalFlip(1))
+        #     if random.random() < self.flip_p:
+        #         transforms_list.append(transforms.RandomVerticalFlip(1))
+        # transforms_list.append(transforms.CenterCrop(self.frame_size))
+        # image_transforms = transforms.Compose(transforms_list)
+        mean, std = get_dataset_img_norm(dataset)
+        transforms_list = [transforms.Resize(self.frame_size, interpolation=3)]
+        transforms_list += [
             transforms.ToTensor(),
-            transforms.Resize(self.frame_size, interpolation=3),
             transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
+                mean=mean,
+                std=std
             )
         ]
         if self.split_name == "train":
@@ -384,7 +365,8 @@ class TactileTactileContrastiveDistributedDataset(Dataset):
                 transforms_list.append(transforms.RandomHorizontalFlip(1))
             if random.random() < self.flip_p:
                 transforms_list.append(transforms.RandomVerticalFlip(1))
-        transforms_list.append(transforms.CenterCrop(self.frame_size))
+        else:
+            transforms_list.append(transforms.CenterCrop(self.frame_size))
         image_transforms = transforms.Compose(transforms_list)
         tactile = self.all_tactile[index]
         if self.split_name == "train":
@@ -498,7 +480,7 @@ def encode_text(tokenizer, text):
     return tokens
 
 
-def old_get_dataset_sensor_type(dataset):
+def get_dataset_sensor_type_old(dataset):
     dataset_sensor_map = {
         "feelang": "plain",
         "hardness": "dotted",
@@ -558,13 +540,13 @@ def get_dataset_img_norm(dataset):
 
 def get_image_transforms(frame_size, dataset, split_name, flip_p):
     transforms_list = [
-            transforms.ToTensor(),
-            transforms.Resize(frame_size, interpolation=3),
-            transforms.Normalize(
-                mean=[0.48145466, 0.4578275, 0.40821073],
-                std=[0.26862954, 0.26130258, 0.27577711]
-            )
-        ]
+        transforms.ToTensor(),
+        transforms.Resize(frame_size, interpolation=3),
+        transforms.Normalize(
+            mean=[0.48145466, 0.4578275, 0.40821073],
+            std=[0.26862954, 0.26130258, 0.27577711]
+        )
+    ]
     if split_name == "train":
         if random.random() < flip_p:
             transforms_list.append(transforms.RandomHorizontalFlip(1))
@@ -581,6 +563,31 @@ def get_image_transforms(frame_size, dataset, split_name, flip_p):
     #         std=std
     #     )
     # ]
-    # transforms_list.append(transforms.CenterCrop(frame_size))
     image_transforms = transforms.Compose(transforms_list)
     return image_transforms
+
+
+def get_frames(frames_path, image_processor, image_transforms, frame_size, train=True, return_indices=False):
+    # Get relevant object(s) and their frames
+    image_tensors = []
+    all_obj_sample_frames = natsort.natsorted(os.path.join(frames_path, i) for i in os.listdir(frames_path))
+    frame_indices = natsort.natsorted([int(i.split("/")[-1].split(".")[0]) for i in all_obj_sample_frames])
+    # Process images
+    image = Image.open(all_obj_sample_frames[0]).convert("RGB")
+    image = image_transforms(image)
+    if train:
+        i, j, _, _ = transforms.RandomCrop.get_params(image, output_size=(frame_size, frame_size))
+        image = crop(image, i, j, frame_size, frame_size)
+    image_tensors.append(image)
+    for frame in all_obj_sample_frames[1:]:
+        image = Image.open(frame).convert("RGB")
+        image = image_transforms(image)
+        if train:
+            image = crop(image, i, j, frame_size, frame_size)
+        image_tensors.append(image)
+    image_tensors = torch.stack(image_tensors, dim=0) # (l, c, h, w)
+    if return_indices:
+        frame_indices = [int(i.split("/")[-1].split(".")[0]) for i in all_obj_sample_frames]
+        return image_tensors, frame_indices
+    else:
+        return image_tensors

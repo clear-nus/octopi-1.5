@@ -1,7 +1,5 @@
 import collections
 import os, torch, tqdm, random, yaml
-import warnings
-import numpy as np
 from utils.dataset import *
 from utils.llm import *
 from utils.encoder import *
@@ -9,15 +7,10 @@ from train_encoder import visualize
 from utils.physiclear_constants import get_categorical_labels
 from transformers import CLIPImageProcessor, AutoTokenizer
 from datetime import datetime
-import pandas as pd
-from sklearn.decomposition import PCA
-from sklearn.manifold import TSNE
-import matplotlib.pyplot as plt
-import seaborn as sns
-from mpl_toolkits.mplot3d import Axes3D
-from sklearn import metrics
 from torch.utils.data import DataLoader
 
+
+target_samples_path = "data/schaeffler_test_set/unseen_samples/samples"
 
 
 def troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device):
@@ -32,9 +25,9 @@ def troubleshoot_encoder(configs, load_exp_configs, models, exp_id, device):
     sample_cnt = 0
     wrong_sample_object_ids = {}
     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
-    for sample in os.listdir(configs["target_samples_path"]):
+    for sample in os.listdir(target_samples_path):
         dataset = sample.split("_")[0]
-        sample_path = os.path.join(configs["target_samples_path"], sample)
+        sample_path = os.path.join(target_samples_path, sample)
         sample_tactile_frames = os.path.join(sample_path, "tactile")
         sample_data = json.load(open(os.path.join(sample_path, "data.json"), "r"))
         sample_object_id = sample_data["object_id"]
@@ -114,8 +107,6 @@ if __name__ == "__main__":
     exp_id = exp_date + "_" + exp_id
     os.makedirs(f"{configs['exps_path']}", exist_ok=True)
     os.makedirs(f"{configs['exps_path']}/{exp_id}", exist_ok=True)
-    os.makedirs(f"{configs['exps_path']}/{exp_id}/results", exist_ok=True)
-    os.makedirs(f"{configs['exps_path']}/{exp_id}/viz", exist_ok=True)
     with open(f"{configs['exps_path']}/{exp_id}/{run_type}.yaml", 'w') as file:
         documents = yaml.dump(configs, file, sort_keys=False)
         file.close()

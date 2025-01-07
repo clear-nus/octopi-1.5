@@ -248,17 +248,19 @@ def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_nu
         second_max_count = 0
         span, indices, max_indices, second_max_indices = [], [], [], []
         count = 0
-        for i in range(1, len(arr)):
+        arr_by_image = natsort.natsorted(arr, key=lambda t: t[0])
+        arr_by_image = [i[0] for i in arr_by_image]
+        for i in range(1, len(arr_by_image)):
             # Check if the current element is equal to previous element +1
-            frame_id = int(arr[i].split("/")[-1].split(".")[0])
-            prev_frame_id = int(arr[i-1].split("/")[-1].split(".")[0])
+            frame_id = int(arr_by_image[i].split("/")[-1].split(".")[0])
+            prev_frame_id = int(arr_by_image[i-1].split("/")[-1].split(".")[0])
             if frame_id == prev_frame_id + 1:
                 if count == 0:
-                    span.append(arr[i-1])
+                    span.append(arr_by_image[i-1])
                     count += 1
                     # indices.append(i-1)
                 count += 1
-                span.append(arr[i])
+                span.append(arr_by_image[i])
                 # indices.append(i)
             # Reset the count
             else:
@@ -281,10 +283,9 @@ def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_nu
         try:
             return max_span, max_indices, None, None
         except UnboundLocalError:
-            # If there is no continuous span, get a random frame
-            idx = random.randrange(0, len(arr))
-            max_span = [arr[idx]]
-            max_indices = [idx]
+            # If there is no continuous span, get frame with the biggest difference
+            max_span = [arr[0][0]]
+            max_indices = []
             return max_span, max_indices, None, None
 
     print(f"Extracting spans with a minimum length of {min_len} and maximum length of {max_len} for {dataset}...")
@@ -312,8 +313,6 @@ def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_nu
                 all_diffs.append((frame, total_diff))
                 prev_frame_gray = frame_gray
             all_diffs = sorted(all_diffs, key=lambda t: t[1], reverse=True)[:top_frame_num]
-            all_diffs = sorted(all_diffs, key=lambda t: t[0])
-            all_diffs = [i[0] for i in all_diffs]
             if sample_count % 100 == 0:
                 print(f"{sample_count} / {num_samples} spans processed for {dataset}.")
             # Check for minimum length

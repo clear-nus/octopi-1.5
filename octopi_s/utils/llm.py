@@ -123,8 +123,6 @@ class MultimodalLLMForCausalLM(nn.Module):
             self.llm_embedding_size = llm.embed_tokens.weight.shape[1]
         self.encoder = CLIPVisionEncoder(clip_model=clip_model)
         self.tactile_adapter = CLIPRFC(input_size=encoder_output_size, output_size=encoder_output_size, residual_ratio=0.5)
-        # self.plain_tactile_adapter = CLIPRFC(input_size=encoder_output_size, output_size=encoder_output_size, residual_ratio=0.5)
-        # self.dotted_tactile_adapter = CLIPRFC(input_size=encoder_output_size, output_size=encoder_output_size, residual_ratio=0.5)
         self.project = nn.Sequential(
             nn.Linear(encoder_output_size, self.llm_embedding_size),
             nn.GELU(),
@@ -158,12 +156,6 @@ class MultimodalLLMForCausalLM(nn.Module):
                 tactile_embeds = self.encoder(tactile_frames[tactile_idx].to(self.device))
                 if not self.prompt_learning:
                     tactile_embeds = self.tactile_adapter(tactile_embeds)
-                # if use_adapter:
-                #     if get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "plain":
-                #         # tactile_embeds = self.dotted_tactile_adapter(tactile_embeds)
-                #         tactile_embeds = self.plain_tactile_adapter(tactile_embeds)
-                #     elif get_dataset_sensor_type(all_datasets[tactile_idx][0]) == "dotted":
-                #         tactile_embeds = self.dotted_tactile_adapter(tactile_embeds)
                 tact_start_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[0]).to(self.device)), dim=0)
                 tactile_embeds = self.project(tactile_embeds)
                 tact_end_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[1]).to(self.device)), dim=0)
@@ -189,7 +181,7 @@ class MultimodalLLMForCausalLM(nn.Module):
         return out, question_embeds
     
 
-def process_user_input(user_input, image_processor, model, tokenizer, device, new_tokens, frame_size, transforms_image):
+def process_user_input(user_input, image_processor, model, tokenizer, device, new_tokens, frame_size, image_transforms):
     tact_start, tact_end = new_tokens
     inputs = [""]
     for char in user_input:
@@ -206,7 +198,7 @@ def process_user_input(user_input, image_processor, model, tokenizer, device, ne
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, chunk), 0).to(device)))
         else:
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, tact_start), 0).to(device)))
-            frames, indices = get_frames(chunk[1:-1], image_processor, transforms_image, frame_size=frame_size, train=False, return_indices=True)
+            frames, indices = get_frames(chunk[1:-1], image_processor, image_transforms, frame_size=frame_size, train=False, return_indices=True)
             tactile_tensors = torch.unsqueeze(frames, dim=0).to(device) # (1, l, c, h, w)
             if not model.prompt_learning:
                 if "[" in chunk:
@@ -214,6 +206,7 @@ def process_user_input(user_input, image_processor, model, tokenizer, device, ne
                 elif "{" in chunk:
                     chunk_embeds = model.project(model.dotted_tactile_adapter(model.tactile_adapter(model.encoder(tactile_tensors))))
             else:
+                # FIXME: Might have to add sensors
                 if "[" in chunk:
                     chunk_embeds = model.project(model.encoder(tactile_tensors))
                 elif "{" in chunk:
