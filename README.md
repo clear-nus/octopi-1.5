@@ -60,6 +60,7 @@
 └── ...
 ```
 where `../data/demo/1` contains the tactile video of an object with only one unique part (texture-wise) while `../data/demo/2` is an object with two unique parts.
+
 6. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
 7. Refer to the [API documentation](https://github.com/clear-nus/octopi-s/wiki/API) for more information on usage.
 
