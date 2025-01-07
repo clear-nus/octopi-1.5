@@ -25,7 +25,9 @@
 
 ### Multimodal LLM
 1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set configs in `configs/run.yaml` (note: put at least one file path in `test_files` or `reasoning_files` for it to test and set `train_files: []`).
+2. Set configs in `configs/run.yaml`.
+    * Put at least one QA file path in `test_files` and / or `reasoning_files` for it to test / reason.
+    * Set `train_files: []` to skip training.
 3. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
 4. Run `python octopi_s/run_llm.py`.
 5. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
@@ -35,9 +37,11 @@
 ## Demo
 1. Change directory into `octopi_s/`.
 2. Set max GPU memory configs in `configs/gpu_config.json`.
-3. Set configs in `configs/demo.yaml` (note: absolute paths are preferred).
+3. Set configs in `configs/demo.yaml`.
+    * Absolute paths are preferred.
 4. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
 5. For a `demo_path: ../data/demo` and `image_path: ../data/demo_videos/demo/rgb.png`, structure your directory like:
+```
 ├── configs
 │   └── ...
 ├── data
@@ -54,6 +58,7 @@
 ├── octopi_s
 │   └── ...
 └── ...
+```
 where `../data/demo/1` contains the tactile video of an object with only one unique part (texture-wise) while `../data/demo/2` is an object with two unique parts.
 6. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
 7. Refer to the [API documentation](https://github.com/clear-nus/octopi-s/wiki/API) for more information on usage.
@@ -65,10 +70,14 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 ### Encoder
 1. Set configs in `configs/run.yaml`.
     * Set `load_exp_path` if you want to start from a checkpoint.
-2. Run `python octopi_s/train_encoder.py` (note: ou need around XX of GPU memory to train the encoder with...).
+2. Run `python octopi_s/train_encoder.py`
+    * You need around XX of GPU memory to train the encoder with...
 3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
 
 ### Multimodal LLM
-1. Set configs in `configs/run.yaml` (note: you must put at least one file path in `train_files` for it to train and set `test_files` and / or `reasoning_files` if you want it to test / reason as well).
+1. Set configs in `configs/run.yaml`.
+    * Put at least one QA file path in `train_files` for it to train.
+    * Set `test_files` and / or `reasoning_files` if you want it to test / reason as well.
+    * Set `load_exp_path` if you want to start from a checkpoint.
 2. Run `python octopi_s/run_llm.py`.
 3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
