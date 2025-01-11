@@ -429,7 +429,7 @@ if __name__ == "__main__":
     min_len = 5
     max_len = 10
     top_frame_num = 50
-    datasets = ["physiclear"] # "physicleardotted"
+    datasets = ["physiclear", "physicleardotted"]
     for dataset in datasets:
         print(f"\nGetting frames from {dataset}...")
         threshold = thresholds[dataset]

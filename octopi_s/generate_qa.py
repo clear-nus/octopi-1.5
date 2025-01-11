@@ -28,7 +28,7 @@ def get_property_order(parts, part_indices_map, property, decreasing):
     return order
 
 
-def generate_description_comparison_qa(json_path, data_dir, split, num_samples, open_set_texture, use_parts, qa_id):
+def generate_description_ranking_qa(json_path, data_dir, split, num_samples, open_set_texture, use_parts, qa_id):
     # Load samples
     for i in range(len(json_path)):
         if i == 0:
@@ -163,7 +163,7 @@ def generate_description_comparison_qa(json_path, data_dir, split, num_samples, 
             })
         all_data.append(data)
     # Save all data
-    file_name = f"description_comparison_qa_{qa_id}"
+    file_name = f"description_ranking_qa_{qa_id}"
     data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w")
     json.dump(all_data, data_file, indent=4) 
     data_file.close()
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     for split in ["train", "test"]:
         json_path = [os.path.join(configs["output_data_dir"], f"{split}_samples.json")]
         num_samples = configs[f"description_qa_{split}_num"]
-        generate_description_comparison_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"], qa_id)
+        generate_description_ranking_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"], qa_id)
     print("Done!")
 
     # 2) Scenario reasoning

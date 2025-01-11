@@ -5,7 +5,7 @@ gpu_config: configs/gpu_config.json
 cuda: 0 # GPU device for non-LLM components
 seed: 0
 flip_p: 0.5
-load_exp_path: /home/user/Documents/octopi-s/data/octopiv2_backup/exps/weights # Directory of pretrained encoder and/or multimodal LLM
+load_exp_path: /home/user/Documents/octopi-s/data/exps/weights # Directory of pretrained encoder and/or multimodal LLM
 
 # Encoder
 use_clip: openai/clip-vit-large-patch14 # CLIP model to use for training
@@ -38,8 +38,8 @@ cutoff_len: 1024
 max_new_tokens: 500
 offload_dir: ./
 ## Files
-train_files: [/home/user/Documents/octopi-s/data/llm_qa/train_description_comparison_qa_octopi_s.json] # Description / ranking QA file(s) for training
-test_files: [/home/user/Documents/octopi-s/data/llm_qa/test_description_comparison_qa_octopi_s.json] # Description / ranking QA file(s) for testing
+train_files: [] # Description / ranking QA file(s) for training
+test_files: [] # Description / ranking QA file(s) for testing
 reasoning_files: [/home/user/Documents/octopi-s/data/llm_qa/test_scenario_qa_octopi_s.json] # Reasoning QA file(s)
 ## Training
 llm_lr: 0.0001
@@ -70,11 +70,11 @@ lora_dropout: 0.05
 target_modules:
   - q_proj
   - v_proj
-  - k_proj
-  - o_proj
-  - gate_proj
-  - down_proj
-  - up_proj
+  # - k_proj
+  # - o_proj
+  # - gate_proj
+  # - down_proj
+  # - up_proj
 modules_to_save:
   # - lm_head
   - embed_tokens
