@@ -6,7 +6,7 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
     * Make sure `pyzmq` is installed using only either conda or Python to prevent conflicts for the IPython notebook.
 2. Install `uvicorn` for the API.
-3. We recommend 17GiB max memory for each GPU for two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
+3. We recommend 17GiB max memory for each GPU for the two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
 
 ### Weights
 1. Download Octopi-S [model weights](https://drive.google.com/file/d/1YMn6V5W-_qvDlCbVSdZiufe729BOEl-A/view?usp=sharing).
@@ -14,11 +14,10 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 
 
 ## Quickstart
-1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set configs in `configs/demo.yaml`.
+1. Set configs in `configs/demo.yaml`.
     * Absolute paths are preferred.
-3. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
-4. For a `demo_path: ../data/demo` and `image_path: ../data/demo/rgb.png`, structure your directory like:
+2. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
+3. For a `demo_path: ../data/demo` and `image_path: ../data/demo/rgb.png`, structure your directory like:
 ```
 ├── configs
 │   └── ...
@@ -70,21 +69,19 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 4. Three QA files will be generated in `output_data_dir` as `train_description_ranking_qa_{ID}.json` (description / ranking training), `test_description_ranking_qa_{ID}.json` (description / ranking testing) and `test_scenario_qa_{ID}.json` (scenario testing).
 
 ### Testing Multimodal LLM
-1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set configs in `configs/run.yaml`.
+1. Set configs in `configs/run.yaml`.
     * Set `load_exp_path: octopi_s/data/weights` to use our model weights.
     * Put at least one QA file absolute path in `test_files` and / or `reasoning_files` for it to test / reason.
     * Set `train_files: []` to skip training.
-3. Run `python octopi_s/run_llm.py`.
-4. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
-5. After you have generated prediction JSON file(s) for ranking and/or scenario reasoning, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` to get prediction results in your terminal.
+2. Run `python octopi_s/run_llm.py`.
+3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
+4. After you have generated prediction JSON file(s) for ranking and/or scenario reasoning, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` to get prediction results in your terminal.
 
 ### Training Multimodal LLM
-1. Set max GPU memory configs in `configs/gpu_config.json`.
-2. Set configs in `configs/run.yaml`.
+1. Set configs in `configs/run.yaml`.
     * Put at least one QA file absolute path in `train_files` for it to train.
     * Set `test_files` and / or `reasoning_files` if you want it to test / reason as well.
     * Set `load_exp_path` if you want to start from an encoder checkpoint (highly recommended), else set as `null`.
-3. Run `python octopi_s/run_llm.py`.
-4. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
-5. If you have set `test_files` and / or `reasoning_files`, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` on the generated prediction JSON file(s) to get prediction results in your terminal.
+2. Run `python octopi_s/run_llm.py`.
+3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
+4. If you have set `test_files` and / or `reasoning_files`, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` on the generated prediction JSON file(s) to get prediction results in your terminal.
