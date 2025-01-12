@@ -1,10 +1,10 @@
 # Octopi-S
 ## Setup
-For the steps below, ensure you are in the root directory `octopi-s/` unless otherwise stated.
+**For the steps below, ensure you are in the root directory `octopi-s/` unless otherwise stated.**
 
 ### Environment
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
-2. Install `uvicorn` for the API.
+2. Install Uvicorn for the API using `sudo apt-get install uvicorn`.
 3. We recommend 17GiB max memory for each GPU for the two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
 
 ### Weights
@@ -38,9 +38,10 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 where `../data/demo/1` contains the tactile video of an object with only one unique part (texture-wise) while `../data/demo/2` is an object with two unique parts.
 
 ### Notebook
-1. Open `octopi_s/quickstart.ipynb`.
-2. Run all cells.
-3. Query the LLM using the pop-up box.
+1. Change directory into `octopi_s/`.
+2. Load `quickstart.ipynb`.
+3. Run all cells.
+4. Query the LLM using the pop-up box.
     * `$d(1,2)` to describe objects (`../data/demo/1`, `../data/demo/2`).
     * `$r(1,3)` to rank objects (`../data/demo/1`, `../data/demo/3`).
     * `$dr(3,2)` to describe and rank objects (`../data/demo/3`, `../data/demo/2`).
