@@ -9,7 +9,7 @@
 
 ### Weights
 1. Download Octopi-S [model weights](https://drive.google.com/file/d/1YMn6V5W-_qvDlCbVSdZiufe729BOEl-A/view?usp=sharing).
-2. Put the weights in `octopi_s/data/` as `octopi_s/data/weights/`.
+2. Unzip and put the weights in `octopi_s/data/` as `octopi_s/data/weights/`.
 
 
 ## Quickstart
@@ -59,7 +59,7 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 ### Processing PhysiCLeAR Datasets Into Salient Frames
 1. Create the directory `octopi_s/data/tactile_datasets`.
 2. Download our [tactile datasets](https://drive.google.com/file/d/1ckSzE4DxSiq4U34gWBIUGreImryLw94c/view?usp=drive_link).
-3. Put the tactile datasets in `octopi_s/data/` as `octopi_s/data/tactile_datasets/`.
+3. Unzip and put the tactile datasets in `octopi_s/data/` as `octopi_s/data/tactile_datasets/`.
 4. Run `python octopi_s/process_datasets.py --dataset_path octopi_s/data/tactile_datasets` to extract salient frame spans and generate data files mapping objects to their sample folder(s).
 
 ### Generating Question-Answer (QA) Files
