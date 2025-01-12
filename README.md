@@ -4,7 +4,6 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 
 ### Environment
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
-    * Make sure `pyzmq` is installed using only either conda or Python to prevent conflicts for the IPython notebook.
 2. Install `uvicorn` for the API.
 3. We recommend 17GiB max memory for each GPU for the two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
 
