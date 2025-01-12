@@ -11,27 +11,25 @@ def evaluate_ranking(data):
         text = text.split("decreasing")[1:]
         try:
             for i, txt in enumerate(text):
-                text[i] = text[i].replace(">", ",").replace("=", ",")
-                text[i] = re.sub(r"[^\d.,]", "", text[i]).strip(".")
+                text[i] = text[i].replace(">=", "=").replace(">", ",")
+                text[i] = re.sub(r"[^\d.,=]", "", text[i]).strip(".")
             hardness_order = [i.strip() for i in text[0].split(",")]
             roughness_order = [i.strip() for i in text[1].split(",")]
-            # print(hardness_order, roughness_order)
             hardness_ranks = {}
             roughness_ranks = {}
             for i in range(len(hardness_order)):
                 if "=" in hardness_order[i]:
-                    for j in hardness_order[i].split(" = "):
+                    for j in hardness_order[i].split("="):
                         hardness_ranks[j] = i
                 else:
                     hardness_ranks[hardness_order[i]] = i
             for i in range(len(roughness_order)):
                 if "=" in roughness_order[i]:
-                    for j in roughness_order[i].split(" = "):
+                    for j in roughness_order[i].split("="):
                         roughness_ranks[j] = i
                 else:
                     roughness_ranks[roughness_order[i]] = i
         except:
-            # print(data)
             return None, None
         return hardness_ranks, roughness_ranks
 
@@ -48,8 +46,13 @@ def evaluate_ranking(data):
             property_order_results["no_ranking"] += 1
             continue
         generation_hardness_order, generation_roughness_order = get_rankings(generation)
-        num_hardness_objects = len(generation_hardness_order)
-        num_roughness_objects = len(generation_roughness_order)
+        try:
+            num_hardness_objects = len(generation_hardness_order)
+            num_roughness_objects = len(generation_roughness_order)
+        except TypeError:
+            property_order_results["invalid_ranking_count"] += 1
+            print(generation)
+            continue
         answer_hardness_order, answer_roughness_order = get_rankings(answer)
         if natsort.natsorted(generation_hardness_order) != natsort.natsorted(answer_hardness_order) or natsort.natsorted(generation_roughness_order) != natsort.natsorted(answer_roughness_order):
             property_order_results["invalid_ranking_count"] += 1
