@@ -167,7 +167,6 @@ offload/
 *.bin
 .sh
 *.out
-*.png
 *.pt
 
 data/
