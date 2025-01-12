@@ -4,7 +4,9 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 
 ### Environment
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
+    * Make sure `pyzmq` is installed using only either conda or Python to prevent conflicts for the IPython notebook.
 2. Install `uvicorn` for the API.
+3. We recommend 17GiB max memory for each GPU for two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
 
 ### Weights
 1. Download Octopi-S [model weights](https://drive.google.com/file/d/1YMn6V5W-_qvDlCbVSdZiufe729BOEl-A/view?usp=sharing).
@@ -12,17 +14,11 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 
 
 ## Quickstart
-### Notebook
-
-
-### API
-1. Change directory into `octopi_s/`.
-2. Set max GPU memory configs in `configs/gpu_config.json`.
-    * 34GiB in total is recommended.
-3. Set configs in `configs/demo.yaml`.
+1. Set max GPU memory configs in `configs/gpu_config.json`.
+2. Set configs in `configs/demo.yaml`.
     * Absolute paths are preferred.
-4. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
-5. For a `demo_path: ../data/demo` and `image_path: ../data/demo/rgb.png`, structure your directory like:
+3. Set `load_exp_path: octopi_s/data/weights` to use our model weights.
+4. For a `demo_path: ../data/demo` and `image_path: ../data/demo/rgb.png`, structure your directory like:
 ```
 ├── configs
 │   └── ...
@@ -43,9 +39,21 @@ For the steps below, ensure you are in the root directory `octopi-s/` unless oth
 ```
 where `../data/demo/1` contains the tactile video of an object with only one unique part (texture-wise) while `../data/demo/2` is an object with two unique parts.
 
-6. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
-7. Open an API platform like Postman.
-8. Refer to the [API documentation](https://github.com/clear-nus/octopi-s/wiki/API) for more information on usage.
+### Notebook
+1. Open `octopi_s/quickstart.ipynb`.
+2. Run all cells.
+3. Query the LLM using the pop-up box.
+    * `$d(1,2)` to describe objects (`../data/demo/1`, `../data/demo/2`).
+    * `$r(1,3)` to rank objects (`../data/demo/1`, `../data/demo/3`).
+    * `$dr(3,2)` to describe and rank objects (`../data/demo/3`, `../data/demo/2`).
+    * `restart` to restart the conversation.
+    * `exit` to exit the conversation.
+
+### API
+1. Change directory into `octopi_s/`.
+2. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
+3. Open an API platform like Postman.
+4. Refer to the [API documentation](https://github.com/clear-nus/octopi-s/wiki/API) for more information on usage.
 
 
 ## Training / Testing
@@ -63,7 +71,6 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 
 ### Testing Multimodal LLM
 1. Set max GPU memory configs in `configs/gpu_config.json`.
-    * 34GiB in total is recommended.
 2. Set configs in `configs/run.yaml`.
     * Set `load_exp_path: octopi_s/data/weights` to use our model weights.
     * Put at least one QA file absolute path in `test_files` and / or `reasoning_files` for it to test / reason.
@@ -74,7 +81,6 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 
 ### Training Multimodal LLM
 1. Set max GPU memory configs in `configs/gpu_config.json`.
-    * 34GiB in total is recommended.
 2. Set configs in `configs/run.yaml`.
     * Put at least one QA file absolute path in `train_files` for it to train.
     * Set `test_files` and / or `reasoning_files` if you want it to test / reason as well.

@@ -15,7 +15,9 @@ wandb
 pandas
 matplotlib
 seaborn
-fastapi[all]
+fastapi
 openai
 scikit-learn
 qwen_vl_utils
+jupyter
+ipykernel
