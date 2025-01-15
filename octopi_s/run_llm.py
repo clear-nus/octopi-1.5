@@ -389,9 +389,6 @@ if __name__ == "__main__":
 
     # Training and/or testing
     if len(configs["train_files"]) > 0:
-        run_llm(configs, exp_id, g, device, peft=False)
-        configs["load_exp_path"] = f"{configs['exps_path']}/{exp_id}"
-        # run_llm(configs, exp_id, g, device, peft=True)
-        # configs["load_exp_path"] = f"{configs['exps_path']}/{exp_id}"
+        run_llm(configs, exp_id, g, device, peft=configs["peft"])
     elif len(configs["test_files"]) > 0 or len(configs["reasoning_files"]) > 0:
-        run_llm(configs, exp_id, g, device, peft=False)
+        run_llm(configs, exp_id, g, device, peft=configs["peft"])
