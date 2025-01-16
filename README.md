@@ -11,9 +11,6 @@
 1. Download Octopi-S [model weights](https://drive.google.com/file/d/1YMn6V5W-_qvDlCbVSdZiufe729BOEl-A/view?usp=sharing).
 2. Unzip and put the weights in `octopi_s/data/` as `octopi_s/data/weights/`.
 
-### Retrieval-Augmented Generation (RAG)
-1. Generate the training embeddings in 
-
 
 ## Quickstart
 1. Set configs in `configs/demo.yaml`.
