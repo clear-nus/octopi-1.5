@@ -107,7 +107,7 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
     * Put at least one QA file absolute path in `train_files` for it to train.
     * Set `test_files` and / or `reasoning_files` if you want it to test / reason as well.
     * Set `load_exp_path` if you want to start from an encoder checkpoint (highly recommended), else set as `null`.
-    * If you want to use RAG for testing and have not generated the embeddings yet, set `rag: True` and `rag_generate_embeddings: True`. Set `rag_generate_embeddings: False` after the embeddings have been generated unless you want to regenerate them.
+    * If you want to use RAG for testing / reasoning and have not generated the embeddings yet, set `rag: True` and `rag_generate_embeddings: True`. Set `rag_generate_embeddings: False` after the embeddings have been generated unless you want to regenerate them.
 2. Run `python octopi_s/run_llm.py`.
 3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
 4. If you have set `test_files` and / or `reasoning_files`, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` on the generated prediction JSON file(s) to get prediction results in your terminal.
