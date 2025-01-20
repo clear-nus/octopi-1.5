@@ -529,7 +529,7 @@ def load_encoder(configs, device):
         plain_tactile_adapter.load_state_dict(state_dict, strict=True)
         print("Loaded plain tactile adapter!")
     else:
-        warnings.warn("No trained dotted tactile adapter found!")
+        warnings.warn("No trained plain tactile adapter found!")
     property_classifier = PropertyClassifier(input_size=load_exp_configs["dim_context_vision"]).to(device)
     if os.path.exists(os.path.join(configs["load_exp_path"], "property_classifier.pt")):
         state_dict = torch.load(os.path.join(configs["load_exp_path"], "property_classifier.pt"), map_location=device, weights_only=True)

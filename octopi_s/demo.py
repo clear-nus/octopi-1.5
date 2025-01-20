@@ -49,7 +49,7 @@ else:
     tactile_vificlip = None
     saved_embeddings = None
     sample_tactile_paths = None
-    object_ids = None
+    rag_object_ids = None
 
 # Load models
 load_exp_configs = yaml.safe_load(open(os.path.join(load_exp_path, "run.yaml")))
