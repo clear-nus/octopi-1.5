@@ -277,7 +277,7 @@ def get_response(query: str):
     question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(model.tokenizer, question_template), 0).to(device)))
     question_embeds = torch.cat(question_embeds, dim=1)
     generation, generation_embeds, question_embeds = generate(question_embeds, model, demo_configs["max_new_tokens"], prev_embeds=None)
-    print(generation)
+    print("Processed user query:", generation)
     generation = generation.strip().replace("<|im_end|>", "")
     try:
         generation_dict = ast.literal_eval(generation)
@@ -332,7 +332,7 @@ def get_response(query: str):
             response = "I have not seen any items yet. Please let me see the item(s) first (after taking a RGB picture)."
         else:
             response = guess_touch_given_objects(app.all_items)
-            response = "The last items I've seen with vision are: " + app.all_items + ". " + response
+            # response = "The last items I've seen with vision are: " + app.all_items + ". " + response
         response = {
             "response": response
         }
