@@ -296,6 +296,7 @@ def get_response(query: str):
             try:
                 response["target_ranking"] = response[generation_dict["criteria"]]
             except KeyError:
+                print(response)
                 response = {
                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
             }
@@ -318,6 +319,7 @@ def get_response(query: str):
             try:
                 response["target_ranking"] = response[generation_dict["criteria"]]
             except KeyError:
+                print(response)
                 response = {
                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
             }
