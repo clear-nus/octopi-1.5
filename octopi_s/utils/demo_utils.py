@@ -259,7 +259,7 @@ def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, objec
             generation = new_generation
         generation += model.tokenizer.eos_token
         # Regenerate generation embeddings
-        generation_tokens = encode_text(model.tokenizer, generation)
+        generation_tokens = encode_text(model.tokenizer, generation).to(device)
         generation_embeds = torch.unsqueeze(model.llm.get_input_embeddings()(generation_tokens), dim=0)
     all_embeds = torch.cat([question_embeds, generation_embeds], dim=1)
     return generation, all_embeds, question, tactile_paths
