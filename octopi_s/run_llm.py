@@ -1,4 +1,3 @@
-import itertools
 import os
 import re
 import shutil 
@@ -17,23 +16,19 @@ from transformers import AutoTokenizer, CLIPImageProcessor
 import random
 import yaml
 from datetime import datetime
-from scipy.stats import kendalltau
-
 
 
 def run_llm(configs, exp_id, g, device, peft):
     # Prepare RAG embeddings for scenario reasoning
-    train = len(configs["train_files"]) > 0
     reason = len(configs["reasoning_files"]) > 0
     if reason:
         if configs["rag"]:
-            tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
+            tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
             if configs["rag_generate_embeddings"]:
                 print("\nGenerating RAG embeddings...")
-                generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device, configs["rag_sample_dir"], configs["embedding_dir"])
+                generate_rag_embeddings(configs, load_exp_configs, tactile_vificlip, device, configs["rag_sample_dir"], configs["embedding_dir"], splits=["train", "test"]) # NOTE: ONLY TRAIN EMBEDDINGS FOR RAG
             del tactile_vificlip
-            del dotted_tactile_adapter
-            del plain_tactile_adapter
+            del tactile_adapter
             del property_classifier
             saved_embeddings, sample_tactile_paths, object_ids = get_rag_embeddings(configs, device)
         else:
@@ -53,12 +48,14 @@ def run_llm(configs, exp_id, g, device, peft):
     # Load datasets
     if configs["use_clip"]:
         image_processor = CLIPImageProcessor.from_pretrained(configs["use_clip"])
+    train = len(configs["train_files"]) > 0
     test = len(configs["test_files"]) > 0
+    if test:
+        tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
     if train:
         train_dataset = TactileLLMDataset(image_processor, configs["train_files"], split_name="train", tokenizer=tokenizer, frame_size=configs["frame_size"], flip_p=configs["flip_p"], model_type=configs["model_type"])
         train_loader = DataLoader(train_dataset, batch_size=configs["per_device_batch_size"], shuffle=True, worker_init_fn=seed_worker, generator=g)
     if test:
-        
         test_dataset = TactileLLMDataset(image_processor, configs["test_files"], split_name="test", tokenizer=tokenizer, frame_size=configs["frame_size"], flip_p=configs["flip_p"], model_type=configs["model_type"])
         test_loader = DataLoader(test_dataset, batch_size=configs["per_device_batch_size"], shuffle=False, worker_init_fn=seed_worker, generator=g)
     if reason:
@@ -150,11 +147,11 @@ def run_llm(configs, exp_id, g, device, peft):
             model.llm.save_pretrained(f"{configs['exps_path']}/{exp_id}/llm_weights_peft")
         else:
             model.llm.save_pretrained(f"{configs['exps_path']}/{exp_id}/llm_weights")
+        torch.save(model.tactile_vificlip.state_dict(), f"{configs['exps_path']}/{exp_id}/tactile_vificlip.pt")
         torch.save(model.encoder.state_dict(), f"{configs['exps_path']}/{exp_id}/tactile_encoder.pt")
         torch.save(model.project.state_dict(), f"{configs['exps_path']}/{exp_id}/project.pt")
-        torch.save(model.tactile_vificlip.state_dict(), f"{configs['exps_path']}/{exp_id}/tactile_vificlip.pt")
-        if os.path.exists(os.path.join(configs['load_exps_path'], "prompt_learning.yaml")):
-            shutil.copy(os.path.join(configs['load_exps_path'], "prompt_learning.yaml"), f"{configs['exps_path']}/{exp_id}/prompt_learning.yaml")
+        if os.path.exists(os.path.join(configs['load_exp_path'], "prompt_learning.yaml")):
+            shutil.copy(os.path.join(configs['load_exp_path'], "prompt_learning.yaml"), f"{configs['exps_path']}/{exp_id}/prompt_learning.yaml")
         print(f"LLM finetuning done!")
 
     # Testing
@@ -165,10 +162,12 @@ def run_llm(configs, exp_id, g, device, peft):
         model.eval()
         preds = []
         with torch.no_grad():
+            bad_ranking_cnt = 0
             for test_sample_step, batch in enumerate(tqdm.tqdm(test_loader)):
                 all_objects, sample_paths = [], []
                 # NOTE: hardcoded for batch size of 1
                 question, chat, answer_tokens, tactile_frames, tactile, all_datasets, all_indices, all_objects_dict = batch
+                rank = "rank" in question[0].lower()
                 answer_tokens = answer_tokens.to(device)
                 _, question_embeds = model(question=question, tactile_frames=tactile_frames, answer_tokens=answer_tokens, all_datasets=all_datasets, all_indices=all_indices, question_embeds_only=True)
                 generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None)
@@ -176,6 +175,52 @@ def run_llm(configs, exp_id, g, device, peft):
                 answer_tokens = answer_tokens[0].cpu().numpy()
                 answer = tokenizer.decode(answer_tokens, skip_special_tokens=True).strip()
                 generation = generation.strip().split(tokenizer.eos_token)[0].strip()
+                if rank:
+                    # NOTE: Compare ranking between encoder and LLM, to be removed
+                    # NOTE: Remember to copy adapter and classifier
+                    hardness_ranks, roughness_ranks = get_rankings(generation)
+                    from get_temp_results import get_encoder_rankings
+                    models = {
+                        "tactile_vificlip": tactile_vificlip,
+                        "tactile_adapter": tactile_adapter,
+                        "property_classifier": property_classifier,
+                    }
+                    encoder_hardness_rankings, encoder_roughness_rankings, gt_hardness_rankings, gt_roughness_rankings = get_encoder_rankings(device, tactile_frames, tactile, all_objects_dict, all_datasets, models)
+                    try:
+                        hardness_ranks = [k for k in hardness_ranks.keys()]
+                        roughness_ranks = [k for k in roughness_ranks.keys()]
+                    except AttributeError:
+                        # LLM formatting is wrong
+                        bad_ranking_cnt += 1
+                        print(generation, bad_ranking_cnt)
+                        continue
+                    print(hardness_ranks, encoder_hardness_rankings, gt_hardness_rankings)
+                    hardness_kt_llm = 0
+                    hardness_kt_encoder = 0
+                    if hardness_ranks == gt_hardness_rankings:
+                        hardness_kt_llm = 1
+                    if encoder_hardness_rankings == gt_hardness_rankings:
+                        hardness_kt_encoder = 1
+                    print(roughness_ranks, encoder_roughness_rankings, gt_roughness_rankings)
+                    roughness_kt_llm = 0
+                    roughness_kt_encoder = 0
+                    if roughness_ranks == gt_roughness_rankings:
+                        roughness_kt_llm = 1
+                    if encoder_roughness_rankings == gt_roughness_rankings:
+                        roughness_kt_encoder = 1
+                    kt_scores = {
+                        "hardness": {
+                            "llm": hardness_kt_llm,
+                            "encoder": hardness_kt_encoder,
+                        },
+                        "roughness": {
+                            "llm": roughness_kt_llm,
+                            "encoder": roughness_kt_encoder,
+                        }
+                    }
+                    print(kt_scores)
+                else:
+                    kt_scores = {}
                 for i in tactile:
                     sample_paths.append(i[0])
                     data = json.load(open(os.path.join("/".join(i[0].split("/")[:-1]), "data.json"), "r"))
@@ -186,6 +231,7 @@ def run_llm(configs, exp_id, g, device, peft):
                     "question": question,
                     "final_true_answer": answer,
                     "final_generation": generation,
+                    "kt_scores": kt_scores,
                 })
             if peft:
                 preds_json_path = f'{configs["exps_path"]}/{exp_id}/preds/llm_peft.json'
@@ -254,14 +300,14 @@ def run_llm(configs, exp_id, g, device, peft):
                         else:
                             chat[c]["generate"] = False
                             generated_chat.append(chat[c])
-                        # NOTE: Only for one touched object in the guessing game
                         if answer_idx == 0 and configs["rag"]: # NOTE: Assume generate_idx=0 is the description
-                            chat[c]["content"] += "\nMost similar objects (in order of decreasing similarity):"
-                            for obj_name, obj_descriptions in rag_outputs[0].items():
-                                if configs["rag_use_descriptions"]:
-                                    chat[c]["content"] += f" {obj_name} ({', '.join(sorted([i[0] for i in obj_descriptions]))});"
-                                else:
-                                    chat[c]["content"] += f" {obj_name};"
+                            generation = chat[c]["content"]
+                            rank = "rank" in chat[0]["content"].lower()
+                            for part_count in range(len(rag_outputs)):
+                                for k, v in rag_outputs[part_count].items():
+                                    rag_outputs[part_count][k] = [i[0] for i in v]
+                            generation = add_rag_to_descriptions(generation, tokenizer, rag_outputs, rank, configs["rag_use_descriptions"])
+                            chat[c]["content"] = generation
                 final_question = [tokenizer.apply_chat_template(generated_chat, tokenize=False, add_generation_prompt=True)]
                 final_true_answer = chat[-1]["content"][0]
                 _, question_embeds = model(question=final_question, tactile_frames=tactile_frames, answer_tokens=None, all_datasets=all_datasets, all_indices=all_indices, question_embeds_only=True)
@@ -269,39 +315,11 @@ def run_llm(configs, exp_id, g, device, peft):
                     generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=configs["max_new_tokens"], num_beams=1, do_sample=False, temperature=None, top_p=None, top_k=None, output_scores=True, return_dict_in_generate=True)
                     final_generation = tokenizer.decode(generation_tokens.sequences[0], skip_special_tokens=True).strip()
                     final_generation = final_generation.strip().split(tokenizer.eos_token)[0].strip()
-                else:
-                    generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=configs["max_new_tokens"], num_beams=1, do_sample=True, temperature=configs["reasoning_temperature"], num_return_sequences=configs["reasoning_sampling_num"], top_p=None, top_k=None, output_scores=True, return_dict_in_generate=True)
-                    option_generations = {}
                     option_counts = {}
                     option_entropies = {}
-                    if configs["reasoning_selection_type"] == "best_of_n":
-                        entropies = get_sentence_entropy(generation_tokens, token_start_index=0)
-                        max_avg_entropy_per_token = max([i["avg_entropy_per_token"] for i in entropies])
-                    for seq_idx, seq in enumerate(generation_tokens.sequences):
-                        generation = tokenizer.decode(seq, skip_special_tokens=True).strip()
-                        generation = generation.strip().split(tokenizer.eos_token)[0].strip()
-                        option = generation.replace("*", "").split("Answer: ")[-1][0]
-                        if option not in ["A", "B", "C"]:
-                            # print(generation) # For debugging
-                            continue
-                        if option not in option_generations.keys():
-                            option_generations[option] = [generation]
-                            option_counts[option] = 1
-                            if configs["reasoning_selection_type"] == "best_of_n":
-                                option_entropies[option] = [(max_avg_entropy_per_token - entropies[seq_idx]["avg_entropy_per_token"]) / max_avg_entropy_per_token]
-                        else:
-                            option_generations[option].append(generation)
-                            option_counts[option] += 1
-                            if configs["reasoning_selection_type"] == "best_of_n":
-                                option_entropies[option].append((max_avg_entropy_per_token - entropies[seq_idx]["avg_entropy_per_token"]) / max_avg_entropy_per_token)
-                    if configs["reasoning_selection_type"] == "majority_voting":
-                        # Get random generation from best option
-                        most_common_option = max(option_counts, key=option_counts.get)
-                        final_generation = random.choice(option_generations[most_common_option])
-                    elif configs["reasoning_selection_type"] == "best_of_n":
-                        # Weigh with average entropy per token
-                        best_option = max(option_entropies, key=lambda k: sum(option_entropies[k]))
-                        final_generation = option_generations[best_option][option_entropies[best_option].index(max(option_entropies[best_option]))]
+                else:
+                    generation_tokens = model.llm.generate(inputs_embeds=question_embeds, max_new_tokens=configs["max_new_tokens"], num_beams=1, do_sample=True, temperature=configs["reasoning_temperature"], num_return_sequences=configs["reasoning_sampling_num"], top_p=None, top_k=None, output_scores=True, return_dict_in_generate=True)
+                    final_generation, option_counts, option_entropies = get_reasoning_sampling_generation(generation_tokens, model.tokenizer, configs["reasoning_selection_type"])
                 all_reason[scenario].append({
                     "sample_no": sample_no[scenario],
                     "sample_paths": sample_paths,
@@ -317,11 +335,6 @@ def run_llm(configs, exp_id, g, device, peft):
                     "option_counts": option_counts,
                     "option_entropies": {k: sum(v) for k, v in option_entropies.items()},
                 })
-            # Prioritize PEFT LLM (if any)
-            if os.path.exists(os.path.join(configs["load_exp_path"], "llm_weights_peft")) or os.path.exists(os.path.join(f'{configs["exps_path"]}/{exp_id}/', "llm_weights_peft")):
-                peft = True
-            else:
-                peft = False
             # Save predictions by scenario
             for scenario in all_reason.keys():
                 if peft:
@@ -349,6 +362,8 @@ if __name__ == "__main__":
     if len(exp_name) == 0:
         exp_name = "debug"
     exp_id = "_llm"
+    if configs["peft"]:
+        exp_id += "_peft"
     if len(configs["train_files"]) > 0:
         exp_id += "_train"
     if len(configs["test_files"]) > 0:

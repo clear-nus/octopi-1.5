@@ -19,7 +19,6 @@ from qwen_vl_utils import process_vision_info
 
 
 def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_len, top_frame_num):
-    # start = datetime.now()
     def extract_frames(sample_video_path, sample_frame_path):
         vidcap = cv.VideoCapture(sample_video_path)
         success, image = vidcap.read()
@@ -109,9 +108,6 @@ def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_l
     for frame in sample_frames:
         if frame not in final_span:
             os.remove(frame)
-    # end = datetime.now()
-    # elapsed = (end - start).total_seconds()
-    # print(f"Span extracted in {elapsed} seconds.")
 
 
 def get_tactile_videos(demo_path, object_ids, replace=True):
@@ -225,12 +221,6 @@ def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, objec
     # print(question, generation)
     if demo_configs["rag"] and describe:
         generation = generation.replace(model.tokenizer.eos_token, "")
-        if "Most similar objects" in generation:
-            print(generation)
-            generation = generation.split("\nMost similar objects")
-            for i in range(len(generation)):
-                generation[i] = generation[i].split(";")[-1]
-            generation = "".join(generation)
         descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
         part_count = 0
         for obj_count, description in enumerate(descriptions):
@@ -270,11 +260,9 @@ def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, objec
         generation += model.tokenizer.eos_token
         # Regenerate generation embeddings
         generation_tokens = encode_text(model.tokenizer, generation)
-        generation_tokens = generation_tokens.to(device)
         generation_embeds = torch.unsqueeze(model.llm.get_input_embeddings()(generation_tokens), dim=0)
     all_embeds = torch.cat([question_embeds, generation_embeds], dim=1)
     return generation, all_embeds, question, tactile_paths
-
 
 
 def generate(question_embeds, model, max_new_tokens, prev_embeds=None):

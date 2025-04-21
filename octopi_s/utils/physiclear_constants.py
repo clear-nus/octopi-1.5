@@ -5,6 +5,10 @@ OBJECTS_WITH_PARTS = {
     'an uncracked, raw egg': [
         'physiclear_egg'
     ],
+    'a dishwashing cloth': [
+        'physiclear_rug',
+        'physiclear_dishwasher_cloth'
+    ],
     'the numbers on a TSA lock': [
         'physiclear_tsa_lock_numbers'
     ],
@@ -22,6 +26,9 @@ OBJECTS_WITH_PARTS = {
     ],
     "a pillow": [
         'physiclear_pillow'
+    ],
+    "a rubber slipper": [
+        'physiclear_rubber_slipper'
     ],
     "a filled, disposable water bottle": [
         'physiclear_water_bottle'
@@ -203,7 +210,7 @@ OBJECTS_WITH_PARTS = {
         'physiclear_feather_duster',
         'physiclear_feather_duster_handle'
     },
-    # New fruits
+    # New items
     'an unpeeled, ripe apple': {
         'physiclear_good_apple'
     },
@@ -218,6 +225,90 @@ OBJECTS_WITH_PARTS = {
     },
     'an unpeeled, spoiled orange': {
         'physiclear_spoilt_orange'
+    },
+    'a lion plush toy': {
+        'physiclear_plush_toy'
+    },
+    'a cotton nose plug': {
+        'physiclear_nose_plug'
+    },
+    'a disposable latex glove': {
+        'physiclear_latex_gloves'
+    },
+    'a foam makeup pad': {
+        'physiclear_makeup_pad'
+    },
+    'a wool scarf': {
+        'physiclear_wool_scarf'
+    },
+    'a piece of chalk': {
+        'physiclear_chalk'
+    },
+    'a silicone mat': {
+        'physiclear_silicone_mat'
+    },
+    'a candle': {
+        'physiclear_candle'
+    },
+    'a cardboard box': {
+        'physiclear_cardboard_box'
+    },
+    'a disposable, plastic bottle cap': {
+        'physiclear_bottle_cap'
+    },
+    'a disposable, plastic straw': {
+        'physiclear_plastic_straw'
+    },
+    'a naked crayon': {
+        'physiclear_crayon'
+    },
+    'a glass weight': {
+        'physiclear_glass_weight'
+    },
+    'a glass marble': {
+        'physiclear_marble'
+    },
+    'a plastic button': {
+        'physiclear_plastic_button'
+    },
+    'a lacquered wooden spoon': {
+        'physiclear_wood_spoon'
+    },
+    'a mesh cloth': {
+        'physiclear_mesh_cloth'
+    },
+    'a cork coaster': {
+        'physiclear_cork_piece'
+    },
+    'a piece of plasticine clay': {
+        'physiclear_plasticine'
+    },
+    'a sheet of sandpaper': {
+        'physiclear_sandpaper'
+    },
+    'a steam cloth': {
+        'physiclear_steam_cloth'
+    },
+    'a jute ball': {
+        'physiclear_jute_ball'
+    },
+    'a stone shard': {
+        'physiclear_stone_shard'
+    },
+    'a hose pipe': {
+        'physiclear_hose_tube'
+    },
+    'an anti-slip mat': {
+        'physiclear_antislip_mat'
+    },
+    'a corn husk basket': {
+        'physiclear_corn_husk_basket'
+    },
+    'a disposable, paper straw': {
+        'physiclear_paper_straw'
+    },
+    'a roll of honeycomb wrapping paper': {
+        'physiclear_honeycomb_wrapper'
     },
 }
 
@@ -262,7 +353,6 @@ TRAIN_OBJECTS = [
     'physiclear_insulating_holder',
     'physiclear_basket',
     'physiclear_blanket',
-    'physiclear_rubber_slippers',
     'physiclear_wires',
     'physiclear_rice_spatula_base',
     'physiclear_toothbrush_bristles',
@@ -294,6 +384,7 @@ TRAIN_OBJECTS = [
     'physiclear_plush_ball',
     'physiclear_dishwasher_cloth',
     'physiclear_rubber_slipper',
+    # New items
     'physiclear_good_apple',
     'physiclear_mango',
     'physiclear_overripe_kiwi',
@@ -301,6 +392,33 @@ TRAIN_OBJECTS = [
     'physiclear_spoilt_orange',
     'physiclear_lemon',
     'physiclear_orange',
+    'physiclear_plush_toy',
+    'physiclear_nose_plug',
+    'physiclear_latex_gloves',
+    'physiclear_makeup_pad',
+    'physiclear_wool_scarf',
+    'physiclear_chalk',
+    'physiclear_silicone_mat',
+    'physiclear_cardboard_box',
+    'physiclear_candle',
+    'physiclear_bottle_cap',
+    'physiclear_plastic_straw',
+    'physiclear_crayon',
+    'physiclear_glass_weight',
+    'physiclear_marble',
+    'physiclear_plastic_button',
+    'physiclear_wood_spoon',
+    'physiclear_mesh_cloth',
+    'physiclear_cork_piece',
+    'physiclear_plasticine',
+    'physiclear_sandpaper',
+    'physiclear_steam_cloth',
+    'physiclear_jute_ball',
+    'physiclear_stone_shard',
+    'physiclear_antislip_mat',
+    'physiclear_corn_husk_basket',
+    'physiclear_hose_tube',
+    'physiclear_paper_straw',
 ]
 
 VAL_OBJECTS = [
@@ -313,12 +431,13 @@ VAL_OBJECTS = [
 ]
 
 TEST_OBJECTS = [
-    'physiclear_microfiber_cloth',
-    'physiclear_hairbrush_handle',
-    'physiclear_toilet_brush_bristles',
-    'physiclear_hairbrush_bristles',
     'physiclear_bath_towel',
     'physiclear_eraser',
+    'physiclear_hairbrush_bristles',
+    'physiclear_hairbrush_handle',
+    'physiclear_honeycomb_wrapper',
+    'physiclear_microfiber_cloth',
+    'physiclear_toilet_brush_bristles',
 ]
 
 
@@ -344,7 +463,6 @@ OBJECTS_PART_NAMES = {
     'physiclear_controller_shoulderpads': "the plastic buttons on a game controller's shoulder",
     'physiclear_eraser': "a new eraser",
     'physiclear_pillow': "a pillow",
-    'physiclear_rubber_slippers': "a pair of rubber slippers",
     'physiclear_rubber_slipper': "a pair of rubber slippers",
     'physiclear_water_bottle': "a filled, disposable water bottle",
     'physiclear_masking_tape': "a roll of masking tape",
@@ -408,11 +526,40 @@ OBJECTS_PART_NAMES = {
     'physiclear_overripe_peach': "an unpeeled, overripe peach",
     'physiclear_peach': "an unpeeled, unripe peach",
     'physiclear_plush_ball': "a plush ball",
+    # New items
     'physiclear_good_apple': "an unpeeled, ripe apple",
     'physiclear_mango': "an unpeeled, overripe mango",
     'physiclear_overripe_kiwi': "an unpeeled, overripe kiwi",
     'physiclear_spoilt_apple': "an unpeeled, spoiled apple",
     'physiclear_spoilt_orange': "an unpeeled, spoiled orange",
+    'physiclear_plush_toy': "a lion plush toy",
+    'physiclear_nose_plug': "a cotton nose plug",
+    'physiclear_latex_gloves': "a disposable latex glove",
+    'physiclear_makeup_pad': "a foam makeup pad",
+    'physiclear_wool_scarf': "a wool scarf",
+    'physiclear_chalk': "a piece of chalk",
+    'physiclear_silicone_mat': "a silicone mat",
+    'physiclear_cardboard_box': "a cardboard box",
+    'physiclear_candle': "a candle",
+    'physiclear_bottle_cap': "a disposable, plastic bottle cap",
+    'physiclear_plastic_straw': "a disposable, plastic straw",
+    'physiclear_crayon': "a naked crayon",
+    'physiclear_glass_weight': "a glass weight",
+    'physiclear_marble': "a glass marble",
+    'physiclear_plastic_button': "a plastic button",
+    'physiclear_wood_spoon': "a lacquered wooden spoon",
+    'physiclear_mesh_cloth': "a mesh cloth",
+    'physiclear_cork_piece': "a cork coaster",
+    'physiclear_plasticine': "a piece of plasticine clay",
+    'physiclear_sandpaper': "a sheet of sandpaper",
+    'physiclear_steam_cloth': "a steam cloth",
+    'physiclear_jute_ball': "a jute ball",
+    'physiclear_stone_shard': "a stone shard",
+    'physiclear_antislip_mat': "an anti-slip mat",
+    'physiclear_corn_husk_basket': "a corn husk basket",
+    'physiclear_hose_tube': "a hose pipe",
+    'physiclear_paper_straw': "a disposable, paper straw",
+    'physiclear_honeycomb_wrapper': "a roll of honeycomb wrapping paper",
 }
 
 OPEN_SET_TEXTURES = {
@@ -436,7 +583,6 @@ OPEN_SET_TEXTURES = {
     'physiclear_controller_shoulderpads': ["smooth", "hard", "clicky", "engraved with letters"],
     'physiclear_eraser': ["slightly firm", "rubberized", "smooth"],
     'physiclear_pillow': ["soft", "plush"],
-    'physiclear_rubber_slippers': ["slightly sticky", "slightly firm", "rubberized", "slightly textured"],
     'physiclear_rubber_slipper': ["slightly sticky", "slightly firm", "rubberized", "slightly textured"],
     'physiclear_water_bottle': ["big bumps", "smooth", "grippy", "slightly flexible"],
     'physiclear_masking_tape': ["slightly textured", "paper-like"],
@@ -501,11 +647,40 @@ OPEN_SET_TEXTURES = {
     'physiclear_overripe_peach': ["slightly firm", "textured", "rounded", "slightly fuzzy", "squishy"],
     'physiclear_peach': ["firm", "textured", "rounded", "slightly fuzzy"],
     'physiclear_plush_ball': ["soft", "fluffy", "slightly textured", "squishy"],
+    # New items
     'physiclear_good_apple': ["smooth", "firm", "glossy", "slightly waxy"],
     'physiclear_mango': ["slightly soft", "smooth", "slightly mushy"],
     'physiclear_overripe_kiwi': ["soft", "squishy", "slightly rough", "fuzzy"],
     'physiclear_spoilt_apple': ["soft", "wrinkled", "textured", "mushy"],
     'physiclear_spoilt_orange': ["textured", "slightly soft", "rounded"],
+    'physiclear_plush_toy': ["soft", "fluffy", "slightly textured", "squishy"],
+    'physiclear_nose_plug': ["soft", "cottony", "slightly textured", "squishy"],
+    'physiclear_latex_gloves': ["smooth", "slightly tacky", "flexible", "thin", "slightly glossy"],
+    'physiclear_makeup_pad': ["soft", "spongy", "slightly textured"],
+    'physiclear_wool_scarf': ["soft", "fibrous", "slightly textured"],
+    'physiclear_chalk': ["hard", "smooth", "slightly powdery", "slightly textured"],
+    'physiclear_silicone_mat': ["smooth", "slightly firm", "slightly tacky", "rubbery"],
+    'physiclear_cardboard_box': ["slightly firm", "slightly textured", "slightly rough", "slightly fibrous"],
+    'physiclear_candle': ["firm", "slightly smooth", "slightly waxy", "textured"],
+    'physiclear_bottle_cap': ["slightly rigid", "textured", "slightly rough"],
+    'physiclear_plastic_straw': ["slightly hard", "smooth"],
+    'physiclear_crayon': ["hard", "smooth", "slightly waxy", "slightly textured", "slightly bumpy with uneven bumps"],
+    'physiclear_glass_weight': ["hard", "smooth", "slightly glossy"],
+    'physiclear_marble': ["hard", "smooth", "slightly glossy"],
+    'physiclear_plastic_button': ["hard", "smooth", "slightly glossy", "indented", "patterned"],
+    'physiclear_wood_spoon': ["hard", "smooth", "slightly glossy", "slightly textured"],
+    'physiclear_mesh_cloth': ["soft", "textured", "slightly rough", "slightly abrasive", "patterned"],
+    'physiclear_cork_piece': ["slightly firm", "slightly textured", "slightly rough", "grainy"],
+    'physiclear_plasticine': ["slightly firm", "malleable", "slightly sticky", "slightly textured"],
+    'physiclear_sandpaper': ["hard", "textured", "rough", "abrasive"],
+    'physiclear_steam_cloth': ["soft", "slightly textured", "flexible", "slightly rough", "patterned"],
+    'physiclear_jute_ball': ["hard", "textured", "rough", "abrasive", "fibrous", "uneven"],
+    'physiclear_stone_shard': ["hard", "textured", "rough", "abrasive", "craggy", "grainy", "jagged"],
+    'physiclear_antislip_mat': ["slightly hard", "slightly rough", "patterned"],
+    'physiclear_corn_husk_basket': ["hard", "textured", "rough", "abrasive", "fibrous", "uneven"],
+    'physiclear_hose_tube': ["slightly firm", "slightly glossy", "rubbery", "slightly ridged", "smooth"],
+    'physiclear_paper_straw': ["slightly hard", "slightly textured", "slightly smooth", "slightly ridged", "papery"],
+    'physiclear_honeycomb_wrapper': ["slightly soft", "slightly textured", "slightly rough", "papery", "patterned"],
 }
 
 HARDNESS_RANK_REGRESSION = {
@@ -530,7 +705,6 @@ HARDNESS_RANK_REGRESSION = {
     'physiclear_controller_shoulderpads': 6,
     'physiclear_eraser': 7,
     'physiclear_pillow': 1.33,
-    'physiclear_rubber_slippers': 6,
     'physiclear_rubber_slipper': 6,
     'physiclear_water_bottle': 5,
     'physiclear_masking_tape': 5,
@@ -594,11 +768,40 @@ HARDNESS_RANK_REGRESSION = {
     'physiclear_overripe_peach': 5.33,
     'physiclear_peach': 7,
     'physiclear_plush_ball': 2,
+    # New items
     'physiclear_good_apple': 8,
     'physiclear_spoilt_orange': 4.33,
     'physiclear_mango': 5,
     'physiclear_spoilt_apple': 4,
     'physiclear_overripe_kiwi': 3,
+    'physiclear_plush_toy': 2.67,
+    'physiclear_nose_plug': 2.67,
+    'physiclear_latex_gloves': 2.67,
+    'physiclear_makeup_pad': 2,
+    'physiclear_wool_scarf': 3.33,
+    'physiclear_chalk': 7.67,
+    'physiclear_silicone_mat': 6.67,
+    'physiclear_cardboard_box': 6,
+    'physiclear_candle': 7.67,
+    'physiclear_bottle_cap': 6.67,
+    'physiclear_plastic_straw': 6.33,
+    'physiclear_crayon': 7.67,
+    'physiclear_glass_weight': 9.67,
+    'physiclear_marble': 9.33,
+    'physiclear_plastic_button': 8,
+    'physiclear_wood_spoon': 8,
+    'physiclear_mesh_cloth': 3,
+    'physiclear_cork_piece': 5.33,
+    'physiclear_plasticine': 4.33,
+    'physiclear_sandpaper': 7.67,
+    'physiclear_steam_cloth': 3.33,
+    'physiclear_jute_ball': 7.67,
+    'physiclear_stone_shard': 9.67,
+    'physiclear_antislip_mat': 6.67,
+    'physiclear_corn_husk_basket': 4.33,
+    'physiclear_hose_tube': 5.67,
+    'physiclear_paper_straw': 5.67,
+    'physiclear_honeycomb_wrapper': 4,
 }
 
 ROUGHNESS_RANK_REGRESSION = {
@@ -623,7 +826,6 @@ ROUGHNESS_RANK_REGRESSION = {
     'physiclear_controller_shoulderpads': 4,
     'physiclear_eraser': 3,
     'physiclear_pillow': 1.67,
-    'physiclear_rubber_slippers': 5.33,
     'physiclear_rubber_slipper': 5.33,
     'physiclear_water_bottle': 2.67,
     'physiclear_masking_tape': 5.67,
@@ -687,11 +889,40 @@ ROUGHNESS_RANK_REGRESSION = {
     'physiclear_overripe_peach': 3.33,
     'physiclear_peach': 3.33,
     'physiclear_plush_ball': 4,
+    # New items
     'physiclear_good_apple': 2,
     'physiclear_spoilt_orange': 5.33,
     'physiclear_mango': 3,
     'physiclear_spoilt_apple': 4,
     'physiclear_overripe_kiwi': 7,
+    'physiclear_plush_toy': 4.33,
+    'physiclear_nose_plug': 4,
+    'physiclear_latex_gloves': 3.33,
+    'physiclear_makeup_pad': 4,
+    'physiclear_wool_scarf': 4,
+    'physiclear_chalk': 1.33,
+    'physiclear_silicone_mat': 1.33,
+    'physiclear_cardboard_box': 3.67,
+    'physiclear_candle': 3.67,
+    'physiclear_bottle_cap': 4.33,
+    'physiclear_plastic_straw': 1,
+    'physiclear_crayon': 2.67,
+    'physiclear_glass_weight': 0.67,
+    'physiclear_marble': 1.33,
+    'physiclear_plastic_button': 3.67,
+    'physiclear_wood_spoon': 2,
+    'physiclear_mesh_cloth': 7.33,
+    'physiclear_cork_piece': 5.67,
+    'physiclear_plasticine': 5.33,
+    'physiclear_sandpaper': 8.67,
+    'physiclear_steam_cloth': 6.67,
+    'physiclear_jute_ball': 8,
+    'physiclear_stone_shard': 8.33,
+    'physiclear_antislip_mat': 6.67,
+    'physiclear_corn_husk_basket': 7.33,
+    'physiclear_hose_tube': 3,
+    'physiclear_paper_straw': 4,
+    'physiclear_honeycomb_wrapper': 5,
 }
 
 

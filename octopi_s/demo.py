@@ -35,14 +35,14 @@ chat_path = demo_configs["chat_path"]
 dataset = "physiclear" # NOTE: Assume the tactile inputs uses the non-dotted GelSight Mini
 
 # RAG
-tactile_vificlip, tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
+tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
 image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=0)
 if demo_configs["rag"]:
     if demo_configs["rag_generate_embeddings"]:
         print("\nGenerating RAG embeddings...")
         generate_rag_embeddings(demo_configs, load_exp_configs, tactile_vificlip, device, demo_configs["rag_sample_dir"], demo_configs["embedding_dir"])
     del tactile_adapter
-    del property_classifier
+    del property_classifiera
     saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
 else:
     tactile_vificlip = None
