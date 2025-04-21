@@ -218,7 +218,12 @@ def get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, 
 def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe: bool, rank: bool):
     question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, describe=describe, rank=rank)
     generation, generation_embeds, question_embeds = generate(question_embeds, model, demo_configs["max_new_tokens"], prev_embeds)
-    # print(question, generation)
+    # Remove RAG repeats
+    if "\nMost similar objects" in generation:
+        generation = generation.split("\nMost similar objects")
+        for i in range(len(generation)-1):
+            generation[i+1] = "".join(generation[i+1].split(";")[1:])
+        generation = "".join(generation)
     if demo_configs["rag"] and describe:
         generation = generation.replace(model.tokenizer.eos_token, "")
         descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
