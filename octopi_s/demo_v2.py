@@ -37,14 +37,13 @@ dataset = "physiclear" # NOTE: Assume the tactile inputs uses the non-dotted Gel
 app.all_items = None
 
 # RAG
-tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
+tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
 image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=0)
 if demo_configs["rag"]:
     if demo_configs["rag_generate_embeddings"]:
         print("\nGenerating RAG embeddings...")
         generate_rag_embeddings(demo_configs, load_exp_configs, tactile_vificlip, device, demo_configs["rag_sample_dir"], demo_configs["embedding_dir"])
-    del dotted_tactile_adapter
-    del plain_tactile_adapter
+    del tactile_adapter
     del property_classifier
     saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
 else:
@@ -356,115 +355,6 @@ def get_response(query: str):
     
     response["command"] = command
     return response
-
-
-# @app.post("/get_response")
-# def get_response(query: str):
-#     prompt = 'You are interfacing with a robot that can sense tactile information and can perform inference on the tactile signals. A user will give a query, and you must identify the most appropriate category that should be sent to the robot. There are 6 categories. Your answer must follow a dictionary format: {CATEGORY_NUMBER: ADDITIONAL DETAILS or NONE if no details are needed}\
-#         \
-#         Category 1: "describe and rank"\
-#         Function: Ask the robot to describe the objects in the scene and rank them by a given criteria, which is either "hardness" or "roughness". If no such criteria was given, the ADDITIONAL DETAILS will be "uncertain".\
-#         Example query: Describe objects 1 and 2 and rank them by hardness.\
-#         Format: {1: hardness/roughness/uncertain}\
-#         \
-#         Category 2: "describe"\
-#         Function: Ask the robot to describe the tactile properties of the object(s) in the scene. The ADDITIONAL_DETAILS will be 1, 2, or 3 if the user asked for either one of these to be described, otherwise, if it is not certain which object, ADDITIONAL_DETAILS will be 4. If multiple items are to be described, ADDITIONAL_DETAILS should be "1,2,3"\
-#         Format: {2: 1/2/3/4}\
-#         \
-#         Category 3: "rank"\
-#         Function: Ask the robot to rank objects in the scene by a given criteria, which is either "hardness" or "roughness". If no such criteria was given, the ADDITIONAL DETAILS will be "uncertain".\
-#         Example query: Please rank the items by hardness.\
-#         Format: {3: hardness/roughness/uncertain}\
-#         \
-#         Category 4: "guess from objects"\
-#         Function: Ask the robot to infer the most likely object given a tactile reading of the object and a list of candidate object names.\
-#         Example query: Which object is it?\
-#         Format: {4: None}\
-#         \
-#         Category 5: "prompt"\
-#         Function: Ask the robot to describe what they see on the table, purely from vision, and not describe them from tactile feedback.\
-#         Format: {5: None}\
-#         \
-#         Category 6: "ask"\
-#         Function: This is a catch-all category for queries that do not fulfil any of the above categories. If the query involves some kind of describe, rank, or guessing, it must never be classified under this category.\
-#         Example query: The item is not a tennis ball. \
-#         Format: {6: None}\
-#         \
-#         ------------\
-#         USER: ' + query.lower() + '\
-#         \
-#         ANSWER:'
-#     messages = [
-#         {"role": "user", "content": prompt}
-#     ]
-#     question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-#     question_embeds = []
-#     question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(model.tokenizer, question_template), 0).to(device)))
-#     question_embeds = torch.cat(question_embeds, dim=1)
-#     generation, generation_embeds, question_embeds = generate(question_embeds, model, demo_configs["max_new_tokens"], prev_embeds=None)
-#     print(generation)
-#     generation = generation.strip().replace("{", "").replace("}", "").replace("<|im_end|>", "")
-#     # Process generation
-#     answer_type = int(generation[0])
-#     context = "".join(generation.split(":")[1:]).strip()
-#     rank_criteria = None
-#     if answer_type == 1:  # "describe" in text and "rank" in text:
-#         command = "describe and rank"
-#         context = context.replace("\"", "")
-#         if context.lower() == "hardness" or context.lower() == "roughness":
-#             rank_criteria = context.replace("\"", "")
-#             object_ids = "1,2,3"
-#             response = describe_rank_objects(object_ids)
-#         else:
-#             response = {
-#                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
-#             }
-#     elif answer_type == 2:  # "describe" in text:
-#         command = "describe"
-#         object_ids = context
-#         print(object_ids)
-#         response = describe_objects(object_ids)
-#         response = {
-#             "response": response
-#         }
-#     elif answer_type == 3:  # "rank" in text:
-#         command = "rank"
-#         context = context.replace("\"", "")
-#         if context.lower() == "hardness" or context.lower() == "roughness":
-#             rank_criteria = context
-#             object_ids = "1,2,3"
-#             response = rank_objects(object_ids)
-#         else:
-#             response = {
-#                 "I could not understand what criteria you want me to sort the items by. Could you try again?"
-#             }
-#     ## handling guess from objects (given the list of objects, what is it?)
-#     elif answer_type == 4:  # "object" in text:
-#         command = "guess from objects"
-#         response = guess_touch_given_objects(app.all_items)
-#         response = {
-#             "response": response
-#         }
-#     elif answer_type == 5:  # "what is this item: " in text:
-#         command = "prompt"
-#         rgb_prompt = "Identify the three central objects, which can either be fruits or balls with non-visual details necessary for tactile reasoning, from right to left. Format your answer as 'Object 1: details, object name.\nObject 2: details, object name.\nObject 3: details, object name.' with less than 5 words each. You must specify the name of the object as the last descriptor for each object.\nExample: Object 1: red, apple.\nObject 2: yellow, banana.\nObject 3: green, tennis ball."
-#         response = describe_rgb(rgb_prompt)
-#         app.all_items = ", ".join(response["objects"])
-#     elif answer_type == 6:
-#         # treat the rest as an ask command.
-#         command = "ask"
-#         response = ask(query)
-#         response = {
-#             "response": response
-#         }
-#     else:
-#         response = "Sorry, I could not understand what you are asking for. Could you try again?"
-#         command = "error"
-    
-#     response["command"] = command
-#     if rank_criteria is not None:
-#         response["target_ranking"] = response[rank_criteria]
-#     return response
 
 
 @app.post("/reset")

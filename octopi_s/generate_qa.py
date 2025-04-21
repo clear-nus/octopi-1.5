@@ -51,9 +51,10 @@ def generate_description_ranking_qa(json_path, data_dir, split, num_samples, ope
         min_num_objects = 1
         max_num_objects = 5
         num_objects = random.randint(min_num_objects, max_num_objects)
+        num_objects = 3 # NOTE
         object_indices = random.sample(range(min_num_objects, max_num_objects+1), num_objects)
         if num_objects > 1:
-            get_order = random.choice([True, False])
+            get_order = True
         else:
             get_order = False
         if not get_order:
@@ -82,6 +83,14 @@ def generate_description_ranking_qa(json_path, data_dir, split, num_samples, ope
         }
         answer = []
         # Get object(s) and their frames
+        # NOTE NOTE NOTE NOTE
+        choices = TEST_OBJECTS
+        new_samples = {}
+        for i in samples:
+            if i in choices:
+                new_samples[i] = samples[i]
+        samples = new_samples
+        # NOTE NOTE NOTE NOTE
         objects = random.sample(list(samples.keys()), k=num_objects)
         object_indices = random.sample(range(min_num_objects, max_num_objects+1), num_objects)
         all_tactile = []
@@ -90,10 +99,13 @@ def generate_description_ranking_qa(json_path, data_dir, split, num_samples, ope
         part_indices_map = {}
         part_count = 0
         for i, obj in enumerate(objects):
-            if use_parts:
-                num_parts = random.randint(1, 2)
-            else:
-                num_parts = 1
+            # NOTE
+            # if use_parts:
+            #     num_parts = random.randint(1, 2)
+            # else:
+            #     num_parts = 1
+            num_parts = 1
+            # NOTE
             if num_parts == 1:
                 object_idx = object_indices[i]
                 tactile = random.choice(samples[obj]) + "/tactile"
@@ -164,7 +176,7 @@ def generate_description_ranking_qa(json_path, data_dir, split, num_samples, ope
         all_data.append(data)
     # Save all data
     file_name = f"description_ranking_qa_{qa_id}"
-    data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w")
+    data_file = open(os.path.join(data_dir, f"{split}_{file_name}.json"), "w") # Original
     json.dump(all_data, data_file, indent=4) 
     data_file.close()
 
@@ -180,8 +192,16 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             "follow_up": "Are the surface tactile properties you mentioned accurate based on common physical characteristics of each object choice's surface? For example, consider its surface texture, material, and how it feels. Correct any inconsistencies or errors. Format your final answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'."
         },
         "guess_touch_from_objects_fruits": {
-            "target_sample": ["physiclear_good_apple", "physiclear_orange", "physiclear_spoilt_apple"],
-            "all_candidate": ["a ripe apple", "a ripe orange", "a spoilt apple"],
+            "target_sample": ["physiclear_good_apple", "physiclear_orange", "physiclear_kiwi_kinda_ripe"],
+            "all_candidate": ["a ripe apple", "a ripe orange", "a ripe kiwi"],
+            "pre_instruction": "",
+            "question": "Task: Determine which option the above object is likely to be: ",
+            "post_instruction": "\nFollow the steps below: 1. Select the surface texture descriptions that help to distinguish between the given options. 2. Give a succinct case for each option using the selected descriptions. 3. Select the best option and format your answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'.",
+            "follow_up": "Are the surface tactile properties you mentioned accurate based on common physical characteristics of each object choice's surface? For example, consider its surface texture, material, and how it feels. Correct any inconsistencies or errors. Format your final answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'."
+        },
+        "guess_touch_from_objects_unseen": {
+            "target_sample": ["physiclear_hairbrush_bristles", "physiclear_hairbrush_handle", "physiclear_microfiber_cloth"],
+            "all_candidate": ["the ends of a hairbrush's bristle", "the plastic handle of a hairbrush", "a dry microfiber cloth"],
             "pre_instruction": "",
             "question": "Task: Determine which option the above object is likely to be: ",
             "post_instruction": "\nFollow the steps below: 1. Select the surface texture descriptions that help to distinguish between the given options. 2. Give a succinct case for each option using the selected descriptions. 3. Select the best option and format your answer in the format 'Answer: <letter>) <name> is the most likely option because <reason(s)>'.",
@@ -347,7 +367,7 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             "content": scenario_info[scenario]["pre_instruction"] + scenario_question + scenario_info[scenario]["post_instruction"],
         })
         data["chat"].append({
-            "question": "assistant",
+            "role": "assistant",
             "content": reasoning_answer
         })
         if "follow_up" in scenario_info[scenario].keys():
@@ -356,7 +376,7 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
                 "content": scenario_info[scenario]["follow_up"],
             })
             data["chat"].append({
-                "question": "assistant",
+                "role": "assistant",
                 "content": reasoning_answer
             })
         if not exist:
@@ -380,18 +400,18 @@ if __name__ == "__main__":
 
     # 1) Description / ranking
     print("Generating description / ranking QA pairs...")
-    for split in ["train", "test"]:
+    for split in ["test"]:
         json_path = [os.path.join(configs["output_data_dir"], f"{split}_samples.json")]
         num_samples = configs[f"description_qa_{split}_num"]
         generate_description_ranking_qa(json_path, configs["output_data_dir"], split, num_samples, configs["open_set_texture"], configs["use_parts"], qa_id)
     print("Done!")
 
-    # 2) Scenario reasoning
-    print("Generating scenario reasoning QA pairs...")
-    num_samples = configs["scenario_qa_test_num"]
-    json_paths = [
-        os.path.join(configs["output_data_dir"], f"train_samples.json"),
-        os.path.join(configs["output_data_dir"], f"test_samples.json"),
-    ]
-    generate_scenario_qa(json_paths, configs["output_data_dir"], num_samples, configs["scenarios"], configs["open_set_texture"], configs["use_parts"], qa_id)
-    print("Done!")
+    # # 2) Scenario reasoning
+    # print("Generating scenario reasoning QA pairs...")
+    # num_samples = configs["scenario_qa_test_num"]
+    # json_paths = [
+    #     os.path.join(configs["output_data_dir"], f"train_samples.json"),
+    #     os.path.join(configs["output_data_dir"], f"test_samples.json"),
+    # ]
+    # generate_scenario_qa(json_paths, configs["output_data_dir"], num_samples, configs["scenarios"], configs["open_set_texture"], configs["use_parts"], qa_id)
+    # print("Done!")
