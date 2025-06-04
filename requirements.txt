@@ -21,3 +21,4 @@ scikit-learn
 qwen_vl_utils
 jupyter
 ipykernel
+python-multipart

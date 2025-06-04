@@ -17,11 +17,46 @@ import shutil
 import os
 from datetime import datetime
 from qwen_vl_utils import process_vision_info
+import json
 
 
 # API
 app = FastAPI()
 logging.set_verbosity_error()
+
+@app.post("/reload_new_rag_items")
+def reload_new_rag_items():
+    os.makedirs(demo_configs["rag_new_sample_dir"], exist_ok=True)
+    os.makedirs(demo_configs["rag_new_embedding_dir"], exist_ok=True)
+    if os.path.exists(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json")):
+        with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json"), "r") as file:
+            app.obj_name_description_map = json.load(file)
+            file.close()
+    else:
+        app.obj_name_description_map = {}
+    if os.path.exists(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json")):
+        with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json"), "r") as file:
+            app.obj_id_name_map = json.load(file)
+            file.close()
+    else:
+        app.obj_id_name_map = {}
+    app.new_rag_object_names = []
+    app.new_sample_tactile_paths = []
+    for new_rag_id in natsort.natsorted(os.listdir(demo_configs["rag_new_sample_dir"])):
+        new_rag_sample_path = os.path.join(demo_configs["rag_new_sample_dir"], new_rag_id)
+        if os.path.isdir(new_rag_sample_path):
+            new_rag_tactile_path = os.path.join(new_rag_sample_path, "tactile")
+            if os.path.exists(new_rag_tactile_path):
+                app.new_sample_tactile_paths.append(new_rag_tactile_path)
+                app.new_rag_object_names.append(app.obj_id_name_map[new_rag_id.strip()])
+    app.new_embeddings = []
+    for new_rag_embedding in natsort.natsorted(os.listdir(demo_configs["rag_new_sample_dir"])):
+        new_rag_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], new_rag_embedding)
+        if os.path.exists(new_rag_embedding_path):
+            tactile_embedding = torch.load(new_rag_embedding_path, map_location=device, weights_only=True)
+            app.new_embeddings.append(tactile_embedding)
+    return {"status": "done"}
+    
 
 # Run settings
 run_type = f"demo"
@@ -46,6 +81,8 @@ if demo_configs["rag"]:
     del tactile_adapter
     del property_classifier
     saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
+    # RAG additions
+    reload_new_rag_items()
 else:
     tactile_vificlip = None
     saved_embeddings = None
@@ -222,6 +259,105 @@ def ask(query: str):
     torch.save(embeds, embedding_history_path)
     save_chat_history(query, generation)
     return generation
+
+
+# def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
+#     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
+#     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
+#     sensors = [get_dataset_sensor_type("physiclear")] # NOTE: Only for non-dotted GelSight Mini
+#     tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
+#     similarities = cos(saved_embeddings, tactile_video_features)
+#     similarities_topk = torch.topk(similarities, k=retrieval_object_num+1) # NOTE
+#     similar_objects = [object_ids[i] for i in similarities_topk.indices[1:]]
+#     obj_name_description_map = {}
+#     for obj in similar_objects:
+#         obj_name = OBJECTS_PART_NAMES[obj]
+#         obj_name_description_map[obj_name] = sorted(OPEN_SET_TEXTURES[obj])
+#     return obj_name_description_map
+
+
+@app.post("/add_new_rag_item")
+def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, object_properties: Union[str, None] = None):
+    demo_sample_path = os.path.join(demo_configs["demo_path"], "4")
+    # NOTE: Save new RAG items to local storage with each addition
+    if len(os.listdir(demo_configs["rag_new_sample_dir"])) == 0:
+        new_rag_id = 0
+    else:
+        last_new_rag_id = int(natsort.natsorted([i for i in os.listdir(demo_configs["rag_new_sample_dir"]) if 'json' not in i])[-1])
+        new_rag_id = last_new_rag_id + 1
+    # Add new item's data
+    app.new_rag_object_names.append(object_name)
+    new_sample_path = os.path.join(demo_configs["rag_new_sample_dir"], str(new_rag_id))
+    os.makedirs(new_sample_path, exist_ok=True)
+    if object_descriptions is None:
+        object_descriptions = ["This is a new object added to the RAG database."] # TODO: Get description from Octopi
+    else:
+        object_descriptions = [i.strip() for i in object_descriptions.strip().lower().split(",")] # "1,2,3" -> ["1", "2", "3"]
+    if object_properties is None:
+        object_properties = [3.33, 6.67] # TODO: Get properties from encoder regression
+    else:
+        object_properties = [int(i.strip()) for i in object_properties.strip().split(",")] # "1,1" -> [1, 1]
+    data = {
+        "object_id": new_rag_id, # "physiclear_steam_cloth"
+        "object": object_name, # "a steam cloth"
+        "properties": {
+            "hardness": object_properties[0],
+            "roughness": object_properties[1]
+        },
+        "tactile_format": "video",
+        # "exploratory_procedure": "Pressing",
+        # "tactile_path": "data/tactile_datasets/physiclear/Pressing/steam_cloth_14.mov",
+        "split": "train"
+    }
+    with open(os.path.join(new_sample_path, "data.json"), "w") as file:
+        json.dump(data, file, indent=4)
+        file.close()
+    # Save tactile frames
+    # TODO: Process tactile frames in demo sample path
+    new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
+    os.makedirs(new_sample_tactile_path, exist_ok=True)
+    app.new_sample_tactile_paths.append(new_sample_tactile_path)
+    # TODO: Get new item's video features from encoder
+    tactile_embedding = None
+    app.new_embeddings.append(tactile_embedding)
+    # NOTE: Will overwrite any existing object name
+    app.obj_name_description_map[object_name] = sorted(object_descriptions)
+    # Save the object name and description map
+    with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json"), "w") as file:
+        json.dump(app.obj_name_description_map, file, indent=4)
+        file.close()
+    # Save the object ID and name map
+    app.obj_id_name_map[new_rag_id] = object_name
+    with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json"), "w") as file:
+        json.dump(app.obj_id_name_map, file, indent=4)
+        file.close()
+    return {"status": "done"}
+
+
+@app.post("/remove_new_rag_item")
+def remove_new_rag_item():
+    app.new_sample_tactile_paths = app.new_sample_tactile_paths[:-1]
+    app.new_rag_object_names = app.new_rag_object_names[:-1]
+    app.new_embeddings = app.new_embeddings[:-1]
+    return {"status": "done"}
+
+
+@app.post("/reset_new_rag_items")
+def reset_new_rag_items():
+    app.new_sample_tactile_paths = []
+    app.new_rag_object_names = []
+    app.new_embeddings = []
+    return {"status": "done"}
+
+
+@app.post("/test_rag")
+def test_rag():
+    print(app.new_rag_object_names)
+    print(app.obj_name_description_map)
+    print(app.obj_id_name_map)
+    print(app.new_sample_tactile_paths)
+    print(app.new_embeddings)
+    return {"status": "done"}
 
 
 @app.post("/get_response")

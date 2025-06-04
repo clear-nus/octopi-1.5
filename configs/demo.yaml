@@ -15,5 +15,7 @@ rag: True # Whether to use RAG or not
 rag_generate_embeddings: False # Whether to generate new RAG embeddings using the tactile encoder from the current run
 rag_sample_dir: ../data/samples # Directory of samples to generate RAG embeddings for
 embedding_dir: ../data/embeddings # Output directory for generated RAG embeddings
+rag_new_sample_dir: ../data/samples_new # Directory for new RAG embeddings if rag_generate_embeddings is True
+rag_new_embedding_dir: ../data/embeddings_new # Directory for new RAG embeddings if rag_generate_embeddings is True
 rag_use_descriptions: True # Whether to use object descriptions for RAG
 retrieval_object_num: 5

@@ -277,3 +277,15 @@ def generate(question_embeds, model, max_new_tokens, prev_embeds=None):
     generation = model.tokenizer.decode(generation_tokens[0]) # https://huggingface.co/docs/transformers/main/llm_tutorial
     generation_embeds = model.llm.get_input_embeddings()(generation_tokens)
     return generation, generation_embeds, question_embeds
+
+
+def add_new_rag(new_rag_folder):
+    pass
+
+
+def remove_latest_rag():
+    pass
+
+
+def save_new_rag():
+    pass
