@@ -462,20 +462,48 @@ class TactileLLMDataset(Dataset):
             else:
                 answer_tokens = encode_text(self.tokenizer, answer + self.eos_token)
             return question, sample["chat"], answer_tokens, tactile_frames, tactile, all_datasets, all_indices, all_objects_dict
-        
 
-def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
+
+# def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
+#     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
+#     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
+#     sensors = [get_dataset_sensor_type("physiclear")] # NOTE: Only for non-dotted GelSight Mini
+#     tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
+#     similarities = cos(saved_embeddings, tactile_video_features)
+#     similarities_topk = torch.topk(similarities, k=retrieval_object_num+1) # NOTE
+#     similar_objects = [object_ids[i] for i in similarities_topk.indices[1:]]
+#     obj_name_description_map = {}
+#     for obj in similar_objects:
+#         obj_name = OBJECTS_PART_NAMES[obj]
+#         obj_name_description_map[obj_name] = sorted(OPEN_SET_TEXTURES[obj])
+#     return obj_name_description_map
+
+
+def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1, new_rag_object_names=[], new_rag_obj_name_description_map={}, new_rag_obj_id_map={}, new_rag_embeddings=[]):
+    # NOTE: Both old and new RAG items
     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
     sensors = [get_dataset_sensor_type("physiclear")] # NOTE: Only for non-dotted GelSight Mini
     tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
+    if new_rag_embeddings is not None:
+        new_rag_embeddings = torch.stack(new_rag_embeddings, dim=0).to(device)
+        saved_embeddings = torch.cat([saved_embeddings, new_rag_embeddings], dim=0)
     similarities = cos(saved_embeddings, tactile_video_features)
     similarities_topk = torch.topk(similarities, k=retrieval_object_num+1) # NOTE
-    similar_objects = [object_ids[i] for i in similarities_topk.indices[1:]]
+    indices = [i for i in similarities_topk.indices[1:]]
+    # NOTE: To check
     obj_name_description_map = {}
-    for obj in similar_objects:
-        obj_name = OBJECTS_PART_NAMES[obj]
-        obj_name_description_map[obj_name] = sorted(OPEN_SET_TEXTURES[obj])
+    for i in indices:
+        if i < len(object_ids):
+            # Old RAG items
+            obj_id = object_ids[i]
+            obj_name = OBJECTS_PART_NAMES[obj_id]
+            obj_name_description_map[obj_name] = sorted(OPEN_SET_TEXTURES[obj_id])
+        else:
+            # New RAG items
+            new_index = i - len(object_ids)
+            obj_name = new_rag_object_names[new_index]
+            obj_name_description_map[obj_name] = sorted(new_rag_obj_name_description_map[obj_name])
     return obj_name_description_map
     
 

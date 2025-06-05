@@ -50,7 +50,7 @@ def reload_new_rag_items():
                 app.new_sample_tactile_paths.append(new_rag_tactile_path)
                 app.new_rag_object_names.append(app.obj_id_name_map[new_rag_id.strip()])
     app.new_embeddings = []
-    for new_rag_embedding in natsort.natsorted(os.listdir(demo_configs["rag_new_sample_dir"])):
+    for new_rag_embedding in natsort.natsorted(os.listdir(demo_configs["rag_new_embedding_dir"])):
         new_rag_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], new_rag_embedding)
         if os.path.exists(new_rag_embedding_path):
             tactile_embedding = torch.load(new_rag_embedding_path, map_location=device, weights_only=True)
@@ -117,7 +117,7 @@ def describe_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=False)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=False, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     return generation
@@ -130,7 +130,7 @@ def rank_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=False, rank=True)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=False, rank=True, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     response_json = {"response": generation}
@@ -153,7 +153,7 @@ def describe_rank_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=True)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=True, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     response_json = {"response": generation}
@@ -261,21 +261,6 @@ def ask(query: str):
     return generation
 
 
-# def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, object_ids, device, retrieval_object_num=1):
-#     cos = nn.CosineSimilarity(dim=1, eps=1e-08)
-#     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
-#     sensors = [get_dataset_sensor_type("physiclear")] # NOTE: Only for non-dotted GelSight Mini
-#     tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
-#     similarities = cos(saved_embeddings, tactile_video_features)
-#     similarities_topk = torch.topk(similarities, k=retrieval_object_num+1) # NOTE
-#     similar_objects = [object_ids[i] for i in similarities_topk.indices[1:]]
-#     obj_name_description_map = {}
-#     for obj in similar_objects:
-#         obj_name = OBJECTS_PART_NAMES[obj]
-#         obj_name_description_map[obj_name] = sorted(OPEN_SET_TEXTURES[obj])
-#     return obj_name_description_map
-
-
 @app.post("/add_new_rag_item")
 def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, object_properties: Union[str, None] = None):
     demo_sample_path = os.path.join(demo_configs["demo_path"], "4")
@@ -313,11 +298,10 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
         json.dump(data, file, indent=4)
         file.close()
     # Save tactile frames
-    # TODO: Process tactile frames in demo sample path
+    # TODO: Get new item's video features from encoder
     new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
     os.makedirs(new_sample_tactile_path, exist_ok=True)
     app.new_sample_tactile_paths.append(new_sample_tactile_path)
-    # TODO: Get new item's video features from encoder
     tactile_embedding = None
     app.new_embeddings.append(tactile_embedding)
     # NOTE: Will overwrite any existing object name
