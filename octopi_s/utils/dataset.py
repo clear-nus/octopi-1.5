@@ -489,8 +489,11 @@ def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embed
         new_rag_embeddings = torch.stack(new_rag_embeddings, dim=0).to(device)
         saved_embeddings = torch.cat([saved_embeddings, new_rag_embeddings], dim=0)
     similarities = cos(saved_embeddings, tactile_video_features)
-    similarities_topk = torch.topk(similarities, k=retrieval_object_num+1) # NOTE
-    indices = [i for i in similarities_topk.indices[1:]]
+    # similarities_topk = torch.topk(similarities, k=retrieval_object_num+1)
+    # indices = [i for i in similarities_topk.indices[1:]]
+    # NOTE: Do not skip the first one as all RAG items are relevant (we are only comparing new test objects)
+    similarities_topk = torch.topk(similarities, k=retrieval_object_num)
+    indices = [i for i in similarities_topk.indices]
     # NOTE: To check
     obj_name_description_map = {}
     for i in indices:

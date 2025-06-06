@@ -299,11 +299,19 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
         file.close()
     # Save tactile frames
     # TODO: Get new item's video features from encoder
+    tactile_vificlip.eval()
     new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
-    os.makedirs(new_sample_tactile_path, exist_ok=True)
+    # os.makedirs(new_sample_tactile_path, exist_ok=True)
+    if not os.path.exists(os.path.join(demo_sample_path, "frames")):
+        get_tactile_videos(demo_configs["demo_path"], object_ids=[4], replace=False)
+    if not os.path.exists(new_sample_tactile_path):
+        shutil.copytree(os.path.join(demo_sample_path, "frames"), new_sample_tactile_path)
     app.new_sample_tactile_paths.append(new_sample_tactile_path)
-    tactile_embedding = None
-    app.new_embeddings.append(tactile_embedding)
+    tactile_frames, _ = get_frames(new_sample_tactile_path, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
+    tactile_frames = torch.unsqueeze(tactile_frames, dim=0)
+    sensors = [get_dataset_sensor_type('physiclear')] # NOTE: Only for non-dotted GelSight Mini
+    tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+    app.new_embeddings.append(tactile_video_features)
     # NOTE: Will overwrite any existing object name
     app.obj_name_description_map[object_name] = sorted(object_descriptions)
     # Save the object name and description map
