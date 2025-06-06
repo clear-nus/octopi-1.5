@@ -312,6 +312,7 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
     sensors = [get_dataset_sensor_type('physiclear')] # NOTE: Only for non-dotted GelSight Mini
     with torch.no_grad():
         tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+        tactile_video_features = torch.flatten(tactile_video_features, start_dim=0)
     app.new_embeddings.append(tactile_video_features)
     # Save tactile embeddings
     tactile_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], f"{new_rag_id}.pt")
