@@ -315,6 +315,7 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
     app.new_embeddings.append(tactile_video_features)
     # Save tactile embeddings
     tactile_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], f"{new_rag_id}.pt")
+    torch.save(tactile_video_features, tactile_embedding_path)
     # NOTE: Will overwrite any existing object name
     app.obj_name_description_map[object_name] = sorted(object_descriptions)
     # Save the object name and description map
