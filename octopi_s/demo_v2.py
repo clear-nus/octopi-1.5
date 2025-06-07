@@ -53,7 +53,9 @@ def reload_new_rag_items():
     for new_rag_embedding in natsort.natsorted(os.listdir(demo_configs["rag_new_embedding_dir"])):
         new_rag_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], new_rag_embedding)
         if os.path.exists(new_rag_embedding_path):
-            tactile_embedding = torch.load(new_rag_embedding_path, map_location=device, weights_only=True)
+            with torch.no_grad():
+                tactile_embedding = torch.load(new_rag_embedding_path, map_location=device, weights_only=True)
+                tactile_embedding.requires_grad = False
             app.new_embeddings.append(tactile_embedding)
     return {"status": "done"}
     
@@ -78,8 +80,8 @@ if demo_configs["rag"]:
     if demo_configs["rag_generate_embeddings"]:
         print("\nGenerating RAG embeddings...")
         generate_rag_embeddings(demo_configs, load_exp_configs, tactile_vificlip, device, demo_configs["rag_sample_dir"], demo_configs["embedding_dir"])
-    del tactile_adapter
-    del property_classifier
+    # del tactile_adapter
+    # del property_classifier
     saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
     # RAG additions
     reload_new_rag_items()
@@ -263,7 +265,9 @@ def ask(query: str):
 
 @app.post("/add_new_rag_item")
 def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, object_properties: Union[str, None] = None):
+    # NOTE: Hardcoded for demo purposes
     demo_sample_path = os.path.join(demo_configs["demo_path"], "4")
+    object_ids = [4]
     # NOTE: Save new RAG items to local storage with each addition
     if len(os.listdir(demo_configs["rag_new_sample_dir"])) == 0:
         new_rag_id = 0
@@ -275,15 +279,19 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
     new_sample_path = os.path.join(demo_configs["rag_new_sample_dir"], str(new_rag_id))
     os.makedirs(new_sample_path, exist_ok=True)
     if object_descriptions is None:
-        object_descriptions = ["This is a new object added to the RAG database."] # TODO: Get description from Octopi
-    else:
-        object_descriptions = [i.strip() for i in object_descriptions.strip().lower().split(",")] # "1,2,3" -> ["1", "2", "3"]
-    if object_properties is None:
-        object_properties = [3.33, 6.67] # TODO: Get properties from encoder regression
-    else:
+        # Get description from Octopi-S if not provided by user
+        demo_configs["rag"] = False
+        generation, _, _, _ = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds=None, describe=True, rank=False, new_rag_object_names=[], new_rag_obj_name_description_map={}, new_rag_obj_id_map={}, new_rag_embeddings=[])
+        print(generation)
+        object_descriptions = generation.split(".")[0].split(":")[-1].strip().lower()
+        demo_configs["rag"] = True
+    object_descriptions = [i.strip() for i in object_descriptions.strip().lower().split(",")] # "fuzzy,round,rough" -> ["fuzzy", "round", "rough"]
+    if object_properties is not None:
         object_properties = [int(i.strip()) for i in object_properties.strip().split(",")] # "1,1" -> [1, 1]
+    else:
+        object_properties = [None, None]
     data = {
-        "object_id": new_rag_id, # "physiclear_steam_cloth"
+        "object_id": new_rag_id,
         "object": object_name, # "a steam cloth"
         "properties": {
             "hardness": object_properties[0],
@@ -294,16 +302,13 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
         # "tactile_path": "data/tactile_datasets/physiclear/Pressing/steam_cloth_14.mov",
         "split": "train"
     }
-    with open(os.path.join(new_sample_path, "data.json"), "w") as file:
-        json.dump(data, file, indent=4)
-        file.close()
     # Save tactile frames
     # Get new item's video features from encoder
     tactile_vificlip.eval()
     new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
     # os.makedirs(new_sample_tactile_path, exist_ok=True)
     if not os.path.exists(os.path.join(demo_sample_path, "frames")):
-        get_tactile_videos(demo_configs["demo_path"], object_ids=[4], replace=False)
+        get_tactile_videos(demo_configs["demo_path"], object_ids, replace=False)
     if not os.path.exists(new_sample_tactile_path):
         shutil.copytree(os.path.join(demo_sample_path, "frames"), new_sample_tactile_path)
     app.new_sample_tactile_paths.append(new_sample_tactile_path)
@@ -312,7 +317,20 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
     sensors = [get_dataset_sensor_type('physiclear')] # NOTE: Only for non-dotted GelSight Mini
     with torch.no_grad():
         tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+        if None in object_properties:
+            # Get properties from encoder regression if not provided by user
+            tactile_adapter.eval()
+            property_classifier.eval()
+            with torch.no_grad():
+                tactile_adapter_video_features = tactile_adapter(tactile_video_features)
+                prop_preds = property_classifier(tactile_adapter_video_features)
+                prop_preds = torch.flatten(prop_preds, start_dim=0)
+                data["properties"]["hardness"] = prop_preds[0].item()
+                data["properties"]["roughness"] = prop_preds[1].item()
         tactile_video_features = torch.flatten(tactile_video_features, start_dim=0)
+    with open(os.path.join(new_sample_path, "data.json"), "w") as file:
+        json.dump(data, file, indent=4)
+        file.close()
     app.new_embeddings.append(tactile_video_features)
     # Save tactile embeddings
     tactile_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], f"{new_rag_id}.pt")
