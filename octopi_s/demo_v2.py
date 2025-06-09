@@ -287,7 +287,7 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
         demo_configs["rag"] = True
     object_descriptions = [i.strip() for i in object_descriptions.strip().lower().split(",")] # "fuzzy,round,rough" -> ["fuzzy", "round", "rough"]
     if object_properties is not None:
-        object_properties = [int(i.strip()) for i in object_properties.strip().split(",")] # "1,1" -> [1, 1]
+        object_properties = [float(i.strip()) for i in object_properties.strip().split(",")] # "1,1" -> [1, 1]
     else:
         object_properties = [None, None]
     data = {
@@ -307,8 +307,9 @@ def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, 
     tactile_vificlip.eval()
     new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
     # os.makedirs(new_sample_tactile_path, exist_ok=True)
-    if not os.path.exists(os.path.join(demo_sample_path, "frames")):
-        get_tactile_videos(demo_configs["demo_path"], object_ids, replace=False)
+    if os.path.exists(os.path.join(demo_sample_path, "frames")):
+        shutil.rmtree(os.path.join(demo_sample_path, "frames"))
+    get_tactile_videos(demo_configs["demo_path"], object_ids, replace=False)
     if not os.path.exists(new_sample_tactile_path):
         shutil.copytree(os.path.join(demo_sample_path, "frames"), new_sample_tactile_path)
     app.new_sample_tactile_paths.append(new_sample_tactile_path)

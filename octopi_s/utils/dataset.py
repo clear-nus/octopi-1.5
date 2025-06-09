@@ -485,7 +485,7 @@ def get_rag_tactile_paths(original_tactile_frames, tactile_vificlip, saved_embed
     original_tactile_frames = torch.unsqueeze(original_tactile_frames, dim=0)
     sensors = [get_dataset_sensor_type("physiclear")] # NOTE: Only for non-dotted GelSight Mini
     tactile_video_features, _, _, _ = tactile_vificlip(original_tactile_frames.to(device), None, None, sensors)
-    if new_rag_embeddings is not None:
+    if new_rag_embeddings is not None and new_rag_embeddings != []:
         new_rag_embeddings = torch.stack(new_rag_embeddings, dim=0).to(device)
         saved_embeddings = torch.cat([saved_embeddings, new_rag_embeddings], dim=0)
     similarities = cos(saved_embeddings, tactile_video_features)
