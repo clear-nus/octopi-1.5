@@ -19,7 +19,6 @@ from qwen_vl_utils import process_vision_info
 
 
 def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_len, top_frame_num):
-    # start = datetime.now()
     def extract_frames(sample_video_path, sample_frame_path):
         vidcap = cv.VideoCapture(sample_video_path)
         success, image = vidcap.read()
@@ -109,9 +108,6 @@ def extract_span(sample_video_path, sample_frame_path, threshold, min_len, max_l
     for frame in sample_frames:
         if frame not in final_span:
             os.remove(frame)
-    # end = datetime.now()
-    # elapsed = (end - start).total_seconds()
-    # print(f"Span extracted in {elapsed} seconds.")
 
 
 def get_tactile_videos(demo_path, object_ids, replace=True):
@@ -149,7 +145,7 @@ def get_tactile_videos(demo_path, object_ids, replace=True):
     return tactile_videos
 
 
-def get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, describe, rank):
+def get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, describe, rank, new_rag_object_names, new_rag_obj_name_description_map, new_rag_obj_id_map, new_rag_embeddings):
     tactile_videos = get_tactile_videos(demo_configs["demo_path"], object_ids)
     tactile_paths = [tactile_videos[i] for i in object_ids]
     tactile_paths_flattened = []
@@ -205,7 +201,7 @@ def get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, 
                 tactile_path = tactile_paths_flattened[tactile_count]
                 if demo_configs["rag"] and describe:
                     tactile_frames, _ = get_frames(tactile_path, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
-                    obj_name_description_map = get_rag_tactile_paths(tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, rag_object_ids, device, retrieval_object_num=demo_configs["retrieval_object_num"])
+                    obj_name_description_map = get_rag_tactile_paths(tactile_frames, tactile_vificlip, saved_embeddings, sample_tactile_paths, rag_object_ids, device, retrieval_object_num=demo_configs["retrieval_object_num"], new_rag_object_names=new_rag_object_names, new_rag_obj_name_description_map=new_rag_obj_name_description_map, new_rag_obj_id_map=new_rag_obj_id_map, new_rag_embeddings=new_rag_embeddings)
                     rag_outputs.append(obj_name_description_map)
                 question[q] = f"[{tactile_path}]"
                 tactile_count += 1
@@ -219,18 +215,17 @@ def get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, 
         return question_embeds, joined_question, tactile_paths, rag_outputs
 
 
-def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe: bool, rank: bool):
-    question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, describe=describe, rank=rank)
+def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe, rank, new_rag_object_names=[], new_rag_obj_name_description_map={}, new_rag_obj_id_map={}, new_rag_embeddings=[]):
+    question_embeds, question, tactile_paths, rag_outputs = get_tactile_embeds(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, describe=describe, rank=rank, new_rag_object_names=new_rag_object_names, new_rag_obj_name_description_map=new_rag_obj_name_description_map, new_rag_obj_id_map=new_rag_obj_id_map, new_rag_embeddings=new_rag_embeddings)
     generation, generation_embeds, question_embeds = generate(question_embeds, model, demo_configs["max_new_tokens"], prev_embeds)
-    # print(question, generation)
+    # Remove RAG repeats
+    if "\nMost similar objects" in generation:
+        generation = generation.split("\nMost similar objects")
+        for i in range(len(generation)-1):
+            generation[i+1] = "".join(generation[i+1].split(";")[1:])
+        generation = "".join(generation)
     if demo_configs["rag"] and describe:
         generation = generation.replace(model.tokenizer.eos_token, "")
-        if "Most similar objects" in generation:
-            print(generation)
-            generation = generation.split("\nMost similar objects")
-            for i in range(len(generation)):
-                generation[i] = generation[i].split(";")[-1]
-            generation = "".join(generation)
         descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
         part_count = 0
         for obj_count, description in enumerate(descriptions):
@@ -269,12 +264,10 @@ def describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, objec
             generation = new_generation
         generation += model.tokenizer.eos_token
         # Regenerate generation embeddings
-        generation_tokens = encode_text(model.tokenizer, generation)
-        generation_tokens = generation_tokens.to(device)
+        generation_tokens = encode_text(model.tokenizer, generation).to(device)
         generation_embeds = torch.unsqueeze(model.llm.get_input_embeddings()(generation_tokens), dim=0)
     all_embeds = torch.cat([question_embeds, generation_embeds], dim=1)
     return generation, all_embeds, question, tactile_paths
-
 
 
 def generate(question_embeds, model, max_new_tokens, prev_embeds=None):

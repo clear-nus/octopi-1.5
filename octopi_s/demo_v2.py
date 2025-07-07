@@ -17,11 +17,48 @@ import shutil
 import os
 from datetime import datetime
 from qwen_vl_utils import process_vision_info
+import json
 
 
 # API
 app = FastAPI()
 logging.set_verbosity_error()
+
+@app.post("/reload_new_rag_items")
+def reload_new_rag_items():
+    os.makedirs(demo_configs["rag_new_sample_dir"], exist_ok=True)
+    os.makedirs(demo_configs["rag_new_embedding_dir"], exist_ok=True)
+    if os.path.exists(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json")):
+        with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json"), "r") as file:
+            app.obj_name_description_map = json.load(file)
+            file.close()
+    else:
+        app.obj_name_description_map = {}
+    if os.path.exists(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json")):
+        with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json"), "r") as file:
+            app.obj_id_name_map = json.load(file)
+            file.close()
+    else:
+        app.obj_id_name_map = {}
+    app.new_rag_object_names = []
+    app.new_sample_tactile_paths = []
+    for new_rag_id in natsort.natsorted(os.listdir(demo_configs["rag_new_sample_dir"])):
+        new_rag_sample_path = os.path.join(demo_configs["rag_new_sample_dir"], new_rag_id)
+        if os.path.isdir(new_rag_sample_path):
+            new_rag_tactile_path = os.path.join(new_rag_sample_path, "tactile")
+            if os.path.exists(new_rag_tactile_path):
+                app.new_sample_tactile_paths.append(new_rag_tactile_path)
+                app.new_rag_object_names.append(app.obj_id_name_map[new_rag_id.strip()])
+    app.new_embeddings = []
+    for new_rag_embedding in natsort.natsorted(os.listdir(demo_configs["rag_new_embedding_dir"])):
+        new_rag_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], new_rag_embedding)
+        if os.path.exists(new_rag_embedding_path):
+            with torch.no_grad():
+                tactile_embedding = torch.load(new_rag_embedding_path, map_location=device, weights_only=True)
+                tactile_embedding.requires_grad = False
+            app.new_embeddings.append(tactile_embedding)
+    return {"status": "done"}
+    
 
 # Run settings
 run_type = f"demo"
@@ -37,16 +74,17 @@ dataset = "physiclear" # NOTE: Assume the tactile inputs uses the non-dotted Gel
 app.all_items = None
 
 # RAG
-tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
+tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(demo_configs, device)
 image_transforms = get_image_transforms(load_exp_configs["frame_size"], dataset, split_name="test", flip_p=0)
 if demo_configs["rag"]:
     if demo_configs["rag_generate_embeddings"]:
         print("\nGenerating RAG embeddings...")
         generate_rag_embeddings(demo_configs, load_exp_configs, tactile_vificlip, device, demo_configs["rag_sample_dir"], demo_configs["embedding_dir"])
-    del dotted_tactile_adapter
-    del plain_tactile_adapter
-    del property_classifier
+    # del tactile_adapter
+    # del property_classifier
     saved_embeddings, sample_tactile_paths, rag_object_ids = get_rag_embeddings(demo_configs, device)
+    # RAG additions
+    reload_new_rag_items()
 else:
     tactile_vificlip = None
     saved_embeddings = None
@@ -81,7 +119,7 @@ def describe_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=False)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=False, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     return generation
@@ -94,7 +132,7 @@ def rank_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=False, rank=True)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=False, rank=True, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     response_json = {"response": generation}
@@ -117,7 +155,7 @@ def describe_rank_objects(object_ids: str):
         prev_embeds = torch.load(embedding_history_path, map_location=device, weights_only=True)
     else:
         prev_embeds = None
-    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=True)
+    generation, all_embeds, question, tactile_paths_flattened = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds, describe=True, rank=True, new_rag_object_names=app.new_rag_object_names, new_rag_obj_name_description_map=app.obj_name_description_map, new_rag_obj_id_map=app.obj_id_name_map, new_rag_embeddings=app.new_embeddings)
     torch.save(all_embeds, embedding_history_path)
     save_chat_history(question, generation)
     response_json = {"response": generation}
@@ -225,6 +263,119 @@ def ask(query: str):
     return generation
 
 
+@app.post("/add_new_rag_item")
+def add_new_rag_item(object_name, object_descriptions: Union[str, None] = None, object_properties: Union[str, None] = None):
+    # NOTE: Hardcoded for demo purposes
+    demo_sample_path = os.path.join(demo_configs["demo_path"], "4")
+    object_ids = [4]
+    # NOTE: Save new RAG items to local storage with each addition
+    if len(os.listdir(demo_configs["rag_new_sample_dir"])) == 0:
+        new_rag_id = 0
+    else:
+        last_new_rag_id = int(natsort.natsorted([i for i in os.listdir(demo_configs["rag_new_sample_dir"]) if 'json' not in i])[-1])
+        new_rag_id = last_new_rag_id + 1
+    # Add new item's data
+    app.new_rag_object_names.append(object_name)
+    new_sample_path = os.path.join(demo_configs["rag_new_sample_dir"], str(new_rag_id))
+    os.makedirs(new_sample_path, exist_ok=True)
+    if object_descriptions is None:
+        # Get description from Octopi-S if not provided by user
+        demo_configs["rag"] = False
+        generation, _, _, _ = describe_rank(model, tactile_vificlip, demo_configs, load_exp_configs, object_ids, image_transforms, device, image_processor, new_tokens, saved_embeddings, sample_tactile_paths, rag_object_ids, prev_embeds=None, describe=True, rank=False, new_rag_object_names=[], new_rag_obj_name_description_map={}, new_rag_obj_id_map={}, new_rag_embeddings=[])
+        print(generation)
+        object_descriptions = generation.split(".")[0].split(":")[-1].strip().lower()
+        demo_configs["rag"] = True
+    object_descriptions = [i.strip() for i in object_descriptions.strip().lower().split(",")] # "fuzzy,round,rough" -> ["fuzzy", "round", "rough"]
+    if object_properties is not None:
+        object_properties = [float(i.strip()) for i in object_properties.strip().split(",")] # "1,1" -> [1, 1]
+    else:
+        object_properties = [None, None]
+    data = {
+        "object_id": new_rag_id,
+        "object": object_name, # "a steam cloth"
+        "properties": {
+            "hardness": object_properties[0],
+            "roughness": object_properties[1]
+        },
+        "tactile_format": "video",
+        # "exploratory_procedure": "Pressing",
+        # "tactile_path": "data/tactile_datasets/physiclear/Pressing/steam_cloth_14.mov",
+        "split": "train"
+    }
+    # Save tactile frames
+    # Get new item's video features from encoder
+    tactile_vificlip.eval()
+    new_sample_tactile_path = os.path.join(new_sample_path, "tactile")
+    # os.makedirs(new_sample_tactile_path, exist_ok=True)
+    if os.path.exists(os.path.join(demo_sample_path, "frames")):
+        shutil.rmtree(os.path.join(demo_sample_path, "frames"))
+    get_tactile_videos(demo_configs["demo_path"], object_ids, replace=False)
+    if not os.path.exists(new_sample_tactile_path):
+        shutil.copytree(os.path.join(demo_sample_path, "frames"), new_sample_tactile_path)
+    app.new_sample_tactile_paths.append(new_sample_tactile_path)
+    tactile_frames, _ = get_frames(new_sample_tactile_path, None, image_transforms, frame_size=load_exp_configs["frame_size"], train=False, return_indices=True)
+    tactile_frames = torch.unsqueeze(tactile_frames, dim=0)
+    sensors = [get_dataset_sensor_type('physiclear')] # NOTE: Only for non-dotted GelSight Mini
+    with torch.no_grad():
+        tactile_video_features, _, _, _ = tactile_vificlip(tactile_frames.to(device), None, None, sensors)
+        if None in object_properties:
+            # Get properties from encoder regression if not provided by user
+            tactile_adapter.eval()
+            property_classifier.eval()
+            with torch.no_grad():
+                tactile_adapter_video_features = tactile_adapter(tactile_video_features)
+                prop_preds = property_classifier(tactile_adapter_video_features)
+                prop_preds = torch.flatten(prop_preds, start_dim=0)
+                data["properties"]["hardness"] = prop_preds[0].item()
+                data["properties"]["roughness"] = prop_preds[1].item()
+        tactile_video_features = torch.flatten(tactile_video_features, start_dim=0)
+    with open(os.path.join(new_sample_path, "data.json"), "w") as file:
+        json.dump(data, file, indent=4)
+        file.close()
+    app.new_embeddings.append(tactile_video_features)
+    # Save tactile embeddings
+    tactile_embedding_path = os.path.join(demo_configs["rag_new_embedding_dir"], f"{new_rag_id}.pt")
+    torch.save(tactile_video_features, tactile_embedding_path)
+    # NOTE: Will overwrite any existing object name
+    app.obj_name_description_map[object_name] = sorted(object_descriptions)
+    # Save the object name and description map
+    with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_name_description_map.json"), "w") as file:
+        json.dump(app.obj_name_description_map, file, indent=4)
+        file.close()
+    # Save the object ID and name map
+    app.obj_id_name_map[new_rag_id] = object_name
+    with open(os.path.join(demo_configs["rag_new_sample_dir"], "obj_id_name_map.json"), "w") as file:
+        json.dump(app.obj_id_name_map, file, indent=4)
+        file.close()
+    return {"status": "done"}
+
+
+@app.post("/remove_new_rag_item")
+def remove_new_rag_item():
+    app.new_sample_tactile_paths = app.new_sample_tactile_paths[:-1]
+    app.new_rag_object_names = app.new_rag_object_names[:-1]
+    app.new_embeddings = app.new_embeddings[:-1]
+    return {"status": "done"}
+
+
+@app.post("/reset_new_rag_items")
+def reset_new_rag_items():
+    app.new_sample_tactile_paths = []
+    app.new_rag_object_names = []
+    app.new_embeddings = []
+    return {"status": "done"}
+
+
+@app.post("/test_rag")
+def test_rag():
+    print(app.new_rag_object_names)
+    print(app.obj_name_description_map)
+    print(app.obj_id_name_map)
+    print(app.new_sample_tactile_paths)
+    print(app.new_embeddings)
+    return {"status": "done"}
+
+
 @app.post("/get_response")
 def get_response(query: str):
     prompt = 'You are interfacing with a robot that can sense tactile information and can perform inference on the tactile signals. A user will give a query, and you must identify the most appropriate category that should be sent to the robot. There are 6 categories. Your answer must be in a dictionary format. If there is a "/" in the format specified, it is to separate possible answers.\
@@ -296,6 +447,7 @@ def get_response(query: str):
             try:
                 response["target_ranking"] = response[generation_dict["criteria"]]
             except KeyError:
+                print(response)
                 response = {
                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
             }
@@ -318,6 +470,7 @@ def get_response(query: str):
             try:
                 response["target_ranking"] = response[generation_dict["criteria"]]
             except KeyError:
+                print(response)
                 response = {
                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
             }
@@ -354,115 +507,6 @@ def get_response(query: str):
     
     response["command"] = command
     return response
-
-
-# @app.post("/get_response")
-# def get_response(query: str):
-#     prompt = 'You are interfacing with a robot that can sense tactile information and can perform inference on the tactile signals. A user will give a query, and you must identify the most appropriate category that should be sent to the robot. There are 6 categories. Your answer must follow a dictionary format: {CATEGORY_NUMBER: ADDITIONAL DETAILS or NONE if no details are needed}\
-#         \
-#         Category 1: "describe and rank"\
-#         Function: Ask the robot to describe the objects in the scene and rank them by a given criteria, which is either "hardness" or "roughness". If no such criteria was given, the ADDITIONAL DETAILS will be "uncertain".\
-#         Example query: Describe objects 1 and 2 and rank them by hardness.\
-#         Format: {1: hardness/roughness/uncertain}\
-#         \
-#         Category 2: "describe"\
-#         Function: Ask the robot to describe the tactile properties of the object(s) in the scene. The ADDITIONAL_DETAILS will be 1, 2, or 3 if the user asked for either one of these to be described, otherwise, if it is not certain which object, ADDITIONAL_DETAILS will be 4. If multiple items are to be described, ADDITIONAL_DETAILS should be "1,2,3"\
-#         Format: {2: 1/2/3/4}\
-#         \
-#         Category 3: "rank"\
-#         Function: Ask the robot to rank objects in the scene by a given criteria, which is either "hardness" or "roughness". If no such criteria was given, the ADDITIONAL DETAILS will be "uncertain".\
-#         Example query: Please rank the items by hardness.\
-#         Format: {3: hardness/roughness/uncertain}\
-#         \
-#         Category 4: "guess from objects"\
-#         Function: Ask the robot to infer the most likely object given a tactile reading of the object and a list of candidate object names.\
-#         Example query: Which object is it?\
-#         Format: {4: None}\
-#         \
-#         Category 5: "prompt"\
-#         Function: Ask the robot to describe what they see on the table, purely from vision, and not describe them from tactile feedback.\
-#         Format: {5: None}\
-#         \
-#         Category 6: "ask"\
-#         Function: This is a catch-all category for queries that do not fulfil any of the above categories. If the query involves some kind of describe, rank, or guessing, it must never be classified under this category.\
-#         Example query: The item is not a tennis ball. \
-#         Format: {6: None}\
-#         \
-#         ------------\
-#         USER: ' + query.lower() + '\
-#         \
-#         ANSWER:'
-#     messages = [
-#         {"role": "user", "content": prompt}
-#     ]
-#     question_template = model.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-#     question_embeds = []
-#     question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(model.tokenizer, question_template), 0).to(device)))
-#     question_embeds = torch.cat(question_embeds, dim=1)
-#     generation, generation_embeds, question_embeds = generate(question_embeds, model, demo_configs["max_new_tokens"], prev_embeds=None)
-#     print(generation)
-#     generation = generation.strip().replace("{", "").replace("}", "").replace("<|im_end|>", "")
-#     # Process generation
-#     answer_type = int(generation[0])
-#     context = "".join(generation.split(":")[1:]).strip()
-#     rank_criteria = None
-#     if answer_type == 1:  # "describe" in text and "rank" in text:
-#         command = "describe and rank"
-#         context = context.replace("\"", "")
-#         if context.lower() == "hardness" or context.lower() == "roughness":
-#             rank_criteria = context.replace("\"", "")
-#             object_ids = "1,2,3"
-#             response = describe_rank_objects(object_ids)
-#         else:
-#             response = {
-#                 "response": "I could not understand what criteria you want me to sort the items by. Could you try again?"
-#             }
-#     elif answer_type == 2:  # "describe" in text:
-#         command = "describe"
-#         object_ids = context
-#         print(object_ids)
-#         response = describe_objects(object_ids)
-#         response = {
-#             "response": response
-#         }
-#     elif answer_type == 3:  # "rank" in text:
-#         command = "rank"
-#         context = context.replace("\"", "")
-#         if context.lower() == "hardness" or context.lower() == "roughness":
-#             rank_criteria = context
-#             object_ids = "1,2,3"
-#             response = rank_objects(object_ids)
-#         else:
-#             response = {
-#                 "I could not understand what criteria you want me to sort the items by. Could you try again?"
-#             }
-#     ## handling guess from objects (given the list of objects, what is it?)
-#     elif answer_type == 4:  # "object" in text:
-#         command = "guess from objects"
-#         response = guess_touch_given_objects(app.all_items)
-#         response = {
-#             "response": response
-#         }
-#     elif answer_type == 5:  # "what is this item: " in text:
-#         command = "prompt"
-#         rgb_prompt = "Identify the three central objects, which can either be fruits or balls with non-visual details necessary for tactile reasoning, from right to left. Format your answer as 'Object 1: details, object name.\nObject 2: details, object name.\nObject 3: details, object name.' with less than 5 words each. You must specify the name of the object as the last descriptor for each object.\nExample: Object 1: red, apple.\nObject 2: yellow, banana.\nObject 3: green, tennis ball."
-#         response = describe_rgb(rgb_prompt)
-#         app.all_items = ", ".join(response["objects"])
-#     elif answer_type == 6:
-#         # treat the rest as an ask command.
-#         command = "ask"
-#         response = ask(query)
-#         response = {
-#             "response": response
-#         }
-#     else:
-#         response = "Sorry, I could not understand what you are asking for. Could you try again?"
-#         command = "error"
-    
-#     response["command"] = command
-#     if rank_criteria is not None:
-#         response["target_ranking"] = response[rank_criteria]
-#     return response
 
 
 @app.post("/reset")

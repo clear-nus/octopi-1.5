@@ -2,57 +2,26 @@ import argparse
 import json
 import math
 import natsort
-import os
-import re
+from utils.llm import get_rankings
 
 
 def evaluate_ranking(data):
-    def get_rankings(text):
-        text = text.split("decreasing")[1:]
-        try:
-            for i, txt in enumerate(text):
-                text[i] = text[i].replace(">=", "=").replace(">", ",")
-                text[i] = re.sub(r"[^\d.,=]", "", text[i]).strip(".")
-            hardness_order = [i.strip() for i in text[0].split(",")]
-            roughness_order = [i.strip() for i in text[1].split(",")]
-            hardness_ranks = {}
-            roughness_ranks = {}
-            for i in range(len(hardness_order)):
-                if "=" in hardness_order[i]:
-                    for j in hardness_order[i].split("="):
-                        hardness_ranks[j] = i
-                else:
-                    hardness_ranks[hardness_order[i]] = i
-            for i in range(len(roughness_order)):
-                if "=" in roughness_order[i]:
-                    for j in roughness_order[i].split("="):
-                        roughness_ranks[j] = i
-                else:
-                    roughness_ranks[roughness_order[i]] = i
-        except:
-            return None, None
-        return hardness_ranks, roughness_ranks
-
     property_order_results = {
         "no_ranking": 0,
         "invalid_ranking_count": 0
     }
+    d_cnt = 0
     for d in data:
         generation = d["final_generation"]
         answer = d["final_true_answer"]
-        if "decreasing" not in d["final_true_answer"]:
+        if "decreasing" not in answer:
             continue
-        if "decreasing" not in d["final_generation"]:
+        if "decreasing" not in generation:
             property_order_results["no_ranking"] += 1
             continue
         generation_hardness_order, generation_roughness_order = get_rankings(generation)
-        try:
-            num_hardness_objects = len(generation_hardness_order)
-            num_roughness_objects = len(generation_roughness_order)
-        except TypeError:
-            property_order_results["invalid_ranking_count"] += 1
-            print(generation)
-            continue
+        num_hardness_objects = len(generation_hardness_order)
+        num_roughness_objects = len(generation_roughness_order)
         answer_hardness_order, answer_roughness_order = get_rankings(answer)
         if natsort.natsorted(generation_hardness_order) != natsort.natsorted(answer_hardness_order) or natsort.natsorted(generation_roughness_order) != natsort.natsorted(answer_roughness_order):
             property_order_results["invalid_ranking_count"] += 1
@@ -96,6 +65,8 @@ def evaluate_ranking(data):
                             property_order_results[num_roughness_objects]["roughness_pairwise_correct"] += 1
             if generation_roughness_order == answer_roughness_order:
                 property_order_results[num_roughness_objects]["roughness_correct"] += 1
+        d_cnt += 1
+    print(d_cnt)
     accuracy = {i: {} for i in property_order_results.keys() if type(i) == int and i != 1}
     for cnt, result in property_order_results.items():
         if cnt == 1:
@@ -117,6 +88,7 @@ def evaluate_reasoning(data):
     correct, cnt = 0, 0
     for d in data:
         generation = d["final_generation"].replace("*", "").split("Answer: ")[-1][0]
+        # generation = d["final_generation"].replace("*", "").split("Answer: ")[-1].split(")")[0][-1]
         answer = d["final_true_answer"][0]
         print(f"Answer: {answer}; Generation: {generation}")
         if generation == answer:
@@ -146,3 +118,8 @@ if __name__ == "__main__":
             print(f"{k}: {v}")
         print(f"No rank sample output: {property_order_results['no_ranking']}")
         print(f"Invalid sample count: {property_order_results['invalid_ranking_count']}")
+
+    # from get_temp_results import evaluate_rag_reasoning
+    # include = "bristles"
+    # exclude = []
+    # evaluate_rag_reasoning(data, include, exclude)

@@ -10,6 +10,8 @@ import copy
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, Qwen2VLForConditionalGeneration
 from peft import PeftModel, PeftConfig, get_peft_model, LoraConfig
 from accelerate import infer_auto_device_map, init_empty_weights
+import os, re, random, itertools
+from scipy.stats import kendalltau
 
 
 def get_model_details(model_type):
@@ -43,43 +45,44 @@ def add_new_tokens(llm, tokenizer, new_tokens):
 
 
 def load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_classes, peft, device, gpu_config, exp_id=None):
+    if configs["load_exp_path"] is not None:
+        if os.path.exists(os.path.join(configs["load_exp_path"], "tokenizer")):
+            tokenizer_path = os.path.join(configs["load_exp_path"], "tokenizer")
+            print("Loading trained tokenizer...")
+        if os.path.exists(os.path.join(configs["load_exp_path"], "llm_weights")):
+            model_path = os.path.join(configs["load_exp_path"], "llm_weights")
+            print("Loading trained LLM...")
+        prompt_learning = "prompt_learning.yaml" in os.listdir(configs["load_exp_path"])
     if configs["gpu_config"] is not None:
-        if configs["load_exp_path"] is not None:
-            if os.path.exists(os.path.join(configs["load_exp_path"], "tokenizer")):
-                tokenizer_path = os.path.join(configs["load_exp_path"], "tokenizer")
-                print("Loading trained tokenizer!")
-            if os.path.exists(os.path.join(configs["load_exp_path"], "llm_weights")):
-                model_path = os.path.join(configs["load_exp_path"], "llm_weights")
-                print("Loading trained LLM!")
-        if configs["model_type"] == "qwen2-vl-7b":
-            gpu_max_mem_config = {}
-            for k, v in gpu_config.items():
-                gpu_max_mem_config[int(k)] = v
-            with init_empty_weights():
-                llm = Qwen2VLForConditionalGeneration.from_pretrained(model_path, device_map="auto", offload_folder=configs["offload_dir"])
+        gpu_max_mem_config = {}
+        for k, v in gpu_config.items():
+            gpu_max_mem_config[int(k)] = v
+    if configs["model_type"] == "qwen2-vl-7b":
+        with init_empty_weights():
+            llm = Qwen2VLForConditionalGeneration.from_pretrained(model_path, device_map="auto", offload_folder=configs["offload_dir"])
+        if configs["gpu_config"] is not None:
             device_map = infer_auto_device_map(
                 llm, max_memory = gpu_max_mem_config, no_split_module_classes=no_split_module_classes
             )
             del llm
-            llm = Qwen2VLForConditionalGeneration.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
         else:
-            with init_empty_weights():
-                config = AutoConfig.from_pretrained(model_path)
-                auto_model = AutoModelForCausalLM.from_config(config)
-            gpu_max_mem_config = {}
-            for k, v in gpu_config.items():
-                gpu_max_mem_config[int(k)] = v
+            device_map = "auto"
+        llm = Qwen2VLForConditionalGeneration.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
+    else:
+        with init_empty_weights():
+            config = AutoConfig.from_pretrained(model_path)
+            auto_model = AutoModelForCausalLM.from_config(config)
+        if configs["gpu_config"] is not None:
             device_map = infer_auto_device_map(
                 auto_model, max_memory = gpu_max_mem_config, no_split_module_classes=no_split_module_classes
             )
-            llm = AutoModelForCausalLM.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
-        tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_auth_token=True, padding_side="left")
-        print("Loaded LLM and tokenizer!")
-        add_new_tokens(llm, tokenizer, new_tokens)
-        print(f"Tokenizer BOS: {tokenizer.bos_token}, EOS: {tokenizer.eos_token}, Pad: {tokenizer.pad_token}")
+        else:
+            device_map = "auto"
+        llm = AutoModelForCausalLM.from_pretrained(model_path, device_map=device_map, offload_folder=configs["offload_dir"])
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_path, use_auth_token=True, padding_side="left")
+    add_new_tokens(llm, tokenizer, new_tokens)
+    print(f"Tokenizer BOS: {tokenizer.bos_token}, EOS: {tokenizer.eos_token}, Pad: {tokenizer.pad_token}")
     # Multimodal LLM instantiation
-    if configs["load_exp_path"] is not None:
-        prompt_learning = "prompt_learning.yaml" in os.listdir(configs["load_exp_path"])
     model = MultimodalLLMForCausalLM(clip_model=configs["use_clip"], encoder_output_size=configs["dim_context_vision"], tokenizer=tokenizer, cutoff_len=configs["cutoff_len"], llm=llm, device=device, new_tokens=new_tokens, prompt_learning=prompt_learning)
     model.to(device)
     # LoRA
@@ -103,26 +106,20 @@ def load_mllm(configs, tokenizer_path, model_path, new_tokens, no_split_module_c
                 os.makedirs(llm_weights_path)
                 llm_peft = get_peft_model(llm, peft_config)
                 llm_peft.save_pretrained(llm_weights_path)
-                del llm_peft
                 llm_peft = None
                 llm = PeftModel.from_pretrained(model=llm, model_id=llm_weights_path, is_trainable=True, device_map="auto", max_memory=gpu_max_mem_config)
-                device_map = infer_auto_device_map(
-                    llm, max_memory = gpu_max_mem_config, no_split_module_classes=no_split_module_classes
-                )
-                llm = PeftModel.from_pretrained(model=llm, model_id=llm_weights_path, is_trainable=True, device_map=device_map, max_memory=gpu_max_mem_config)
             print("Saved and loaded newly initialized PEFT LLM!")
     model.llm = llm
-    print("Loaded LLM!")
-    tactile_vificlip, dotted_tactile_adapter, plain_tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
+    print("Loaded LLM and tokenizer!")
+    tactile_vificlip, tactile_adapter, property_classifier, load_exp_configs = load_encoder(configs, device)
     model.tactile_vificlip = tactile_vificlip
     model.load_exp_configs = load_exp_configs
-    del dotted_tactile_adapter
-    del plain_tactile_adapter
+    del tactile_adapter
     del property_classifier
     model.encoder.model.vision_model = tactile_vificlip.clip_model.vision_model
     if os.path.exists(os.path.join(configs["load_exp_path"], "project.pt")):
         model.project.load_state_dict(torch.load(os.path.join(configs["load_exp_path"], "project.pt"), map_location=device, weights_only=True))
-        print("Loaded projection module!")
+        print("Loaded trained projection module!")
     return model
 
 
@@ -137,7 +134,6 @@ class MultimodalLLMForCausalLM(nn.Module):
         except AttributeError:
             self.llm_embedding_size = llm.embed_tokens.weight.shape[1]
         self.encoder = CLIPVisionEncoder(clip_model=clip_model)
-        self.tactile_adapter = Adapter(input_size=encoder_output_size, output_size=encoder_output_size, residual_ratio=0.5)
         self.project = nn.Sequential(
             nn.Linear(encoder_output_size, self.llm_embedding_size),
             nn.GELU(),
@@ -168,7 +164,8 @@ class MultimodalLLMForCausalLM(nn.Module):
             question_embeds.append(chunk_embeds)
             # Tactile
             if tactile_idx < num_tactile:
-                tactile_embeds = self.encoder(tactile_frames[tactile_idx].to(self.device))
+                sensors = [get_dataset_sensor_type(all_datasets[tactile_idx][0])]
+                tactile_embeds = self.encoder(tactile_frames[tactile_idx].to(self.device), sensors=sensors)
                 tact_start_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[0]).to(self.device)), dim=0)
                 tactile_embeds = self.project(tactile_embeds)
                 tact_end_embeds = torch.unsqueeze(self.llm.get_input_embeddings()(encode_text(self.tokenizer, self.new_tokens[1]).to(self.device)), dim=0)
@@ -213,11 +210,85 @@ def process_user_input(user_input, image_processor, model, tokenizer, device, ne
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, tact_start), 0).to(device)))
             frames, indices = get_frames(chunk[1:-1], image_processor, image_transforms, frame_size=frame_size, train=False, return_indices=True)
             tactile_tensors = torch.unsqueeze(frames, dim=0).to(device) # (1, l, c, h, w)
-            chunk_embeds = model.project(model.encoder(tactile_tensors))
+            # FIXME: Might have to add sensors properly
+            sensors = [get_dataset_sensor_type("physiclear")]
+            if "[" in chunk:
+                chunk_embeds = model.project(model.encoder(tactile_tensors, sensors))
+            elif "{" in chunk:
+                chunk_embeds = model.project(model.encoder(tactile_tensors, sensors))
             question_embeds.append(chunk_embeds)
             question_embeds.append(model.llm.get_input_embeddings()(torch.unsqueeze(encode_text(tokenizer, tact_end), 0).to(device)))
     question_embeds = torch.cat(question_embeds, dim=1)
     return question_embeds
+
+
+def get_rankings(text):
+    print(text)
+    text = text.split("decreasing")[1:]
+    try:
+        # FIXME: Account for =
+        for i, txt in enumerate(text):
+            text[i] = text[i].replace(">=", ">").replace(">", ",")
+            text[i] = re.sub(r"[^\d.,=]", "", text[i]).strip(".")
+        hardness_order = [i.strip() for i in text[0].split(",")]
+        roughness_order = [i.strip() for i in text[1].split(",")]
+        hardness_ranks = {}
+        roughness_ranks = {}
+        for i in range(len(hardness_order)):
+            if "=" in hardness_order[i]:
+                for j in hardness_order[i].split("="):
+                    hardness_ranks[j] = i
+            else:
+                hardness_ranks[hardness_order[i]] = i
+        for i in range(len(roughness_order)):
+            if "=" in roughness_order[i]:
+                for j in roughness_order[i].split("="):
+                    roughness_ranks[j] = i
+            else:
+                roughness_ranks[roughness_order[i]] = i
+    except:
+        return None, None
+    return hardness_ranks, roughness_ranks
+
+
+def add_rag_to_descriptions(generation, tokenizer, rag_outputs, rank, rag_use_descriptions):
+    generation = generation.replace(tokenizer.eos_token, "")
+    descriptions = generation.split("Object parts ranked")[0].split("Object")[1:]
+    part_count = 0
+    for obj_count, description in enumerate(descriptions):
+        description = description.strip().strip("\n")
+        if "Part" not in description:
+            description += "\nMost similar objects (in order of decreasing similarity):"
+            for obj_name, obj_descriptions in rag_outputs[part_count].items():
+                if rag_use_descriptions:
+                    description += f" {obj_name} ({', '.join(sorted([i for i in obj_descriptions]))});"
+                else:
+                    description += f" {obj_name};"
+            part_count += 1
+        else:
+            obj_id = description.split("Part")[0]
+            parts = description.split("Part")[1:]
+            for p, part in enumerate(parts):
+                parts[p] = parts[p].strip().strip("\n")
+                parts[p] += "\nMost similar objects (in order of decreasing similarity):"
+                for obj_name, obj_descriptions in rag_outputs[part_count].items():
+                    if rag_use_descriptions:
+                        parts[p] += f" {obj_name} ({', '.join(sorted([i for i in obj_descriptions]))});"
+                    else:
+                        parts[p] += f" {obj_name};"
+                if p != len(parts) - 1:
+                    parts[p] += "\n"
+                part_count += 1
+            description = obj_id + "Part " + "Part ".join(parts)
+        if obj_count != len(descriptions) - 1:
+            description += "\n\n"
+        descriptions[obj_count] = description
+    new_generation = "Object " + "Object ".join(descriptions)
+    if rank and len(rag_outputs) > 1:
+        generation = new_generation + "\n\nObject parts ranked" + "Object parts ranked".join(generation.split("Object parts ranked")[1:])
+    else:
+        generation = new_generation
+    return generation
 
 
 def get_sentence_entropy(generation_tokens, token_start_index):
@@ -239,3 +310,39 @@ def get_sentence_entropy(generation_tokens, token_start_index):
             "avg_entropy_per_token": avg_entropy.item(),
         })
     return entropies
+
+
+def get_reasoning_sampling_generation(generation_tokens, tokenizer, reasoning_selection_type):
+    option_generations = {}
+    option_counts = {}
+    option_entropies = {}
+    if reasoning_selection_type == "best_of_n":
+        entropies = get_sentence_entropy(generation_tokens, token_start_index=0)
+        max_avg_entropy_per_token = max([i["avg_entropy_per_token"] for i in entropies])
+    for seq_idx, seq in enumerate(generation_tokens.sequences):
+        generation = tokenizer.decode(seq, skip_special_tokens=True).strip()
+        generation = generation.strip().split(tokenizer.eos_token)[0].strip()
+        option = generation.replace("*", "").split("Answer: ")[-1][0]
+        # option = generation.replace("*", "").split("Answer: ")[-1].split(")")[0][-1]
+        if option not in ["A", "B", "C"]:
+            print(generation)
+            continue
+        if option not in option_generations.keys():
+            option_generations[option] = [generation]
+            option_counts[option] = 1
+            if reasoning_selection_type == "best_of_n":
+                option_entropies[option] = [(max_avg_entropy_per_token - entropies[seq_idx]["avg_entropy_per_token"]) / max_avg_entropy_per_token]
+        else:
+            option_generations[option].append(generation)
+            option_counts[option] += 1
+            if reasoning_selection_type == "best_of_n":
+                option_entropies[option].append((max_avg_entropy_per_token - entropies[seq_idx]["avg_entropy_per_token"]) / max_avg_entropy_per_token)
+    if reasoning_selection_type == "majority_voting":
+        # Get random generation from best option
+        most_common_option = max(option_counts, key=option_counts.get)
+        final_generation = random.choice(option_generations[most_common_option])
+    elif reasoning_selection_type == "best_of_n":
+        # Weigh with average entropy per token
+        best_option = max(option_entropies, key=lambda k: sum(option_entropies[k]))
+        final_generation = option_generations[best_option][option_entropies[best_option].index(max(option_entropies[best_option]))]
+    return final_generation, option_counts, option_entropies

@@ -33,7 +33,6 @@ def get_physiclear_frames(dataset, tactile_path, frames_output_path):
         for j in range(len(dataset_files)):
             tactile_file_path = os.path.join(exploratory_procedure_path, dataset_files[j])
             try:
-                extract_all_frames(dataset, tactile_file_path, frames_output_path, obj_count)
                 object_id = f"physiclear_" + "_".join(tactile_file_path.split("/")[-1].split("_")[:-1]).strip()
                 object_name = OBJECTS_PART_NAMES[f"physiclear_" + "_".join(tactile_file_path.split("/")[-1].split("_")[:-1]).strip()]
                 if object_id in TRAIN_OBJECTS:
@@ -42,6 +41,8 @@ def get_physiclear_frames(dataset, tactile_path, frames_output_path):
                     split = "val"
                 elif object_id in TEST_OBJECTS:
                     split = "test"
+                else:
+                    continue
                 sample_data = {
                     "object_id": object_id,
                     "object": object_name,
@@ -55,6 +56,7 @@ def get_physiclear_frames(dataset, tactile_path, frames_output_path):
                     # "rgb_path": rgb_file_path,
                     "split": split
                 }
+                extract_all_frames(dataset, tactile_file_path, frames_output_path, obj_count)
                 data_file = open(os.path.join(frames_output_path, f'{dataset}_{obj_count}/data.json'), "w")
                 json.dump(sample_data, data_file, indent=4)
                 data_file.close()
@@ -63,7 +65,7 @@ def get_physiclear_frames(dataset, tactile_path, frames_output_path):
                     print(f"{j} / {len(dataset_files)} samples extracted for {exploratory_procedure}.")
                 obj_count += 1
             except KeyError:
-                # print(object_id)
+                print(object_id)
                 continue
 
 
@@ -241,53 +243,54 @@ def get_objectfolder_frames(dataset, dataset_path, frames_output_path):
             print(f"{object_count} / {len(objects)} objects extracted for {dataset}.")
 
 
-def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_num):
-    def find_longest_spans(arr):
-        # Find the maximum length by traversing the array
-        max_count = 0
-        second_max_count = 0
-        span, indices, max_indices, second_max_indices = [], [], [], []
-        count = 0
-        arr_by_image = natsort.natsorted(arr, key=lambda t: t[0])
-        arr_by_image = [i[0] for i in arr_by_image]
-        for i in range(1, len(arr_by_image)):
-            # Check if the current element is equal to previous element +1
-            frame_id = int(arr_by_image[i].split("/")[-1].split(".")[0])
-            prev_frame_id = int(arr_by_image[i-1].split("/")[-1].split(".")[0])
-            if frame_id == prev_frame_id + 1:
-                if count == 0:
-                    span.append(arr_by_image[i-1])
-                    count += 1
-                    # indices.append(i-1)
+def find_longest_spans(arr):
+    # Find the maximum length by traversing the array
+    max_count = 0
+    second_max_count = 0
+    span, indices, max_indices, second_max_indices = [], [], [], []
+    count = 0
+    arr_by_image = natsort.natsorted(arr, key=lambda t: t[0])
+    arr_by_image = [i[0] for i in arr_by_image]
+    for i in range(1, len(arr_by_image)):
+        # Check if the current element is equal to previous element +1
+        frame_id = int(arr_by_image[i].split("/")[-1].split(".")[0])
+        prev_frame_id = int(arr_by_image[i-1].split("/")[-1].split(".")[0])
+        if frame_id == prev_frame_id + 1:
+            if count == 0:
+                span.append(arr_by_image[i-1])
                 count += 1
-                span.append(arr_by_image[i])
-                # indices.append(i)
-            # Reset the count
-            else:
-                # Update the maximum
-                if count > max_count:
-                    max_count = count
-                    max_span = span
-                    # max_indices = indices
-                elif count > second_max_count:
-                    second_max_count = count
-                    second_max_span = span
-                    # second_max_indices = indices
-                span = []
-                count = 0
-                # indices = []
-        try:
-            return max_span, max_indices, second_max_span, second_max_indices
-        except UnboundLocalError:
-            pass
-        try:
-            return max_span, max_indices, None, None
-        except UnboundLocalError:
-            # If there is no continuous span, get frame with the biggest difference
-            max_span = [arr[0][0]]
-            max_indices = []
-            return max_span, max_indices, None, None
+                # indices.append(i-1)
+            count += 1
+            span.append(arr_by_image[i])
+            # indices.append(i)
+        # Reset the count
+        else:
+            # Update the maximum
+            if count > max_count:
+                max_count = count
+                max_span = span
+                # max_indices = indices
+            elif count > second_max_count:
+                second_max_count = count
+                second_max_span = span
+                # second_max_indices = indices
+            span = []
+            count = 0
+            # indices = []
+    try:
+        return max_span, max_indices, second_max_span, second_max_indices
+    except UnboundLocalError:
+        pass
+    try:
+        return max_span, max_indices, None, None
+    except UnboundLocalError:
+        # If there is no continuous span, get frame with the biggest difference
+        max_span = [arr[0][0]]
+        max_indices = []
+        return max_span, max_indices, None, None
 
+
+def extract_span(dataset, output_path, threshold, min_len, max_len, top_frame_num):
     print(f"Extracting spans with a minimum length of {min_len} and maximum length of {max_len} for {dataset}...")
     sample_count = 0
     num_samples = len([i for i in os.listdir(output_path) if dataset in i])
@@ -429,7 +432,7 @@ if __name__ == "__main__":
     min_len = 5
     max_len = 10
     top_frame_num = 50
-    datasets = ["physiclear"] # physicleardotted
+    datasets = ["physiclear"] # "physicleardotted"
     for dataset in datasets:
         print(f"\nGetting frames from {dataset}...")
         threshold = thresholds[dataset]
