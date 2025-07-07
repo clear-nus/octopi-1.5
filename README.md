@@ -1,4 +1,4 @@
-# Octopi-S
+# Octopi-1.5
 ## Setup
 **For the steps below, ensure you are in the root directory `octopi-s/` unless otherwise stated.**
 
