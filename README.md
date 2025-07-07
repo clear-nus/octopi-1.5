@@ -1,6 +1,6 @@
 # Octopi-1.5
 ## Setup
-**For the steps below, ensure you are in the root directory `octopi-s/` unless otherwise stated.**
+**For the steps below, ensure you are in the root directory `octopi-1.5/` unless otherwise stated.**
 
 ### Environment
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
