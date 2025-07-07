@@ -1,6 +1,6 @@
 # Octopi-1.5
 ## Setup
-**For the steps below, ensure you are in the root directory `octopi_s/` unless otherwise stated.**
+**For the steps below, ensure you are in the root directory `octopi-s/` unless otherwise stated.**
 
 ### Environment
 1. In a conda environment with PyTorch / CUDA available, run `pip install -r requirements.txt` to install all dependencies.
@@ -75,7 +75,7 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 1. Change directory into `octopi_s/`.
 2. Run `uvicorn demo:app --host=0.0.0.0 --port=8000 --log-level=debug --reload`.
 3. Open an API platform like Postman.
-4. Refer to the [API documentation](https://github.com/clear-nus/Octopi-1.5 	/wiki/API) for more information on usage.
+4. Refer to the [API documentation](https://github.com/clear-nus/Octopi-1.5/wiki/API) for more information on usage.
 
 
 ## Training / Testing
