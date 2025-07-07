@@ -1,7 +1,7 @@
 # General
-gpu_config: /home/users/samson/octopi-schaeffler/octopi-s/configs/gpu_config.json
+gpu_config: /home/users/yourname/octopi-1.5/octopi-s/configs/gpu_config.json
 cuda: 0 # GPU device for non-LLM components
-load_exp_path: /home/users/samson/octopi-schaeffler/octopi-s/data/2025_01_17_05_24_39_llm_peft_train_test_reason_debug # Directory of pretrained encoder and/or multimodal LLM
+load_exp_path: /home/users/syourname/octopi-1.5/octopi-s/data/2025_01_17_05_24_39_llm_peft_train_test_reason_debug # Directory of pretrained encoder and/or multimodal LLM
 demo_path: ../data/demo_videos/demo # Directory of demo tactile videos
 image_path: ../data/demo_videos/demo/rgb.png # Demo scene RGB image
 embedding_history_path: ../data/demo_videos/demo/embedding_history.pt # Demo chat history as embeddings
