@@ -111,3 +111,22 @@ where `../data/demo/1` contains the tactile video of an object with only one uni
 2. Run `python octopi_s/run_llm.py`.
 3. Enter the experiment ID you want when prompted to make the experiment directory easily identifiable.
 4. If you have set `test_files` and / or `reasoning_files`, run `python octopi_s/evaluate_llm.py --llm_preds_path {path/to/results.json}` on the generated prediction JSON file(s) to get prediction results in your terminal.
+
+### Printing Instructions for TMI
+* Filament: eSun PLA+ Orange
+* Nozzle diameter: 0.6mm
+* Layer height: 0.3mm
+* Wall thickness: 1.2mm
+* Top-bottom thickness: 1.2mm
+* Infill: 20% Gyroid
+* Temperature: 190C for eSun PLA+
+* Cooling Fan: 100%
+
+### Assembly
+1. For TAC-02, remove the metal casing with a long M1.6 screwdriver and remove the inner circuit boards and the padding. 
+2. Place the circuit board into the printed TAC_bottom and TAC_top components.
+3. Set the housing into the TAC-02 Finger Mount, and insert M2 screws to secure it in place.
+4. For Gelsight, ensure that the data port is facing the indent of the Gelsight Mount.
+5. Insert it in, then you can secure it with 2x 1.5mm screws.
+
+
