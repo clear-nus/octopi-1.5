@@ -1,4 +1,22 @@
 # Octopi-1.5
+Octopi-1.5 is visual-tactile-language model (VTLM). This repository enables you to get up and running with Octopi-1.5, and accompanies the R:SS paper.
+- Paper: https://arxiv.org/abs/2507.09985
+
+![Octopi-1.5 Model Overview](octopi-1.5.png)
+
+### Citation
+If you find this work helpful, please consider citing us:
+
+>@INPROCEEDINGS{YuS-RSS-25,  
+>   AUTHOR    = {Samson Yu AND Lin Kelvin AND Harold Soh},  
+>   TITLE     = {{Demonstrating the Octopi-1.5 Visual-Tactile-Language Model}},  
+>   BOOKTITLE = {Proceedings of Robotics: Science and Systems},  
+>   YEAR      = {2025},  
+>   ADDRESS   = {LosAngeles, CA, USA},  
+>   MONTH     = {June},  
+>   DOI       = {10.15607/RSS.2025.XXI.058}  
+>}  
+
 ## Setup
 **For the steps below, ensure you are in the root directory `octopi-1.5/` unless otherwise stated.**
 
