@@ -175,52 +175,6 @@ def run_llm(configs, exp_id, g, device, peft):
                 answer_tokens = answer_tokens[0].cpu().numpy()
                 answer = tokenizer.decode(answer_tokens, skip_special_tokens=True).strip()
                 generation = generation.strip().split(tokenizer.eos_token)[0].strip()
-                if rank:
-                    # NOTE: Compare ranking between encoder and LLM, to be removed
-                    # NOTE: Remember to copy adapter and classifier
-                    hardness_ranks, roughness_ranks = get_rankings(generation)
-                    from get_temp_results import get_encoder_rankings
-                    models = {
-                        "tactile_vificlip": tactile_vificlip,
-                        "tactile_adapter": tactile_adapter,
-                        "property_classifier": property_classifier,
-                    }
-                    encoder_hardness_rankings, encoder_roughness_rankings, gt_hardness_rankings, gt_roughness_rankings = get_encoder_rankings(device, tactile_frames, tactile, all_objects_dict, all_datasets, models)
-                    try:
-                        hardness_ranks = [k for k in hardness_ranks.keys()]
-                        roughness_ranks = [k for k in roughness_ranks.keys()]
-                    except AttributeError:
-                        # LLM formatting is wrong
-                        bad_ranking_cnt += 1
-                        print(generation, bad_ranking_cnt)
-                        continue
-                    print(hardness_ranks, encoder_hardness_rankings, gt_hardness_rankings)
-                    hardness_kt_llm = 0
-                    hardness_kt_encoder = 0
-                    if hardness_ranks == gt_hardness_rankings:
-                        hardness_kt_llm = 1
-                    if encoder_hardness_rankings == gt_hardness_rankings:
-                        hardness_kt_encoder = 1
-                    print(roughness_ranks, encoder_roughness_rankings, gt_roughness_rankings)
-                    roughness_kt_llm = 0
-                    roughness_kt_encoder = 0
-                    if roughness_ranks == gt_roughness_rankings:
-                        roughness_kt_llm = 1
-                    if encoder_roughness_rankings == gt_roughness_rankings:
-                        roughness_kt_encoder = 1
-                    kt_scores = {
-                        "hardness": {
-                            "llm": hardness_kt_llm,
-                            "encoder": hardness_kt_encoder,
-                        },
-                        "roughness": {
-                            "llm": roughness_kt_llm,
-                            "encoder": roughness_kt_encoder,
-                        }
-                    }
-                    print(kt_scores)
-                else:
-                    kt_scores = {}
                 for i in tactile:
                     sample_paths.append(i[0])
                     data = json.load(open(os.path.join("/".join(i[0].split("/")[:-1]), "data.json"), "r"))
@@ -231,7 +185,6 @@ def run_llm(configs, exp_id, g, device, peft):
                     "question": question,
                     "final_true_answer": answer,
                     "final_generation": generation,
-                    "kt_scores": kt_scores,
                 })
             if peft:
                 preds_json_path = f'{configs["exps_path"]}/{exp_id}/preds/llm_peft.json'

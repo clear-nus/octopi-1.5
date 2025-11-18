@@ -5,7 +5,7 @@ gpu_config: configs/gpu_config.json
 cuda: 0 # GPU device for non-LLM components
 seed: 0
 flip_p: 0.5
-load_exp_path: /home/user/Documents/octopi-s/data/exps/weights # Directory of pretrained encoder and/or multimodal LLM
+load_exp_path: /home/user/Documents/octopi/data/exps/weights # Directory of pretrained encoder and/or multimodal LLM
 
 # Encoder
 use_clip: openai/clip-vit-large-patch14 # CLIP model to use for training
@@ -47,7 +47,7 @@ llm_gradient_accumulation_steps: 16 # Gradient accumulation steps for LLM traini
 per_device_batch_size: 1
 ## Reasoning
 scenarios: null 
-generate_idx: [0,1] # Answer step(s) to generate respones for
+generate_idx: [0,1] # Answer step(s) to generate responses for
 answer_step_idx: 2 # Answer step to stop chat
 rag: True # Whether to use RAG or not
 rag_generate_embeddings: False # Whether to generate new RAG embeddings using the tactile encoder from the current run
@@ -63,6 +63,7 @@ max_train_steps: 5000 # Number of QA pairs to use for training
 freeze_projection: False
 projection_lr: 0.0005
 ## LoRA
+peft: True
 max_peft_train_steps: 1000 # Number of QA pairs to use for PEFT (LoRA) training
 lora_alpha: 32
 r: 32
@@ -70,12 +71,11 @@ lora_dropout: 0.05
 target_modules:
   - q_proj
   - v_proj
-  # - k_proj
-  # - o_proj
-  # - gate_proj
-  # - down_proj
-  # - up_proj
+  - k_proj
+  - o_proj
+  - gate_proj
+  - down_proj
+  - up_proj
 modules_to_save:
-  # - lm_head
   - embed_tokens
 bias: none

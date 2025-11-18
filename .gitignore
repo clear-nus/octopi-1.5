@@ -178,3 +178,4 @@ wandb/
 octopi_s/run_llm_psr.py
 octopi_s/comparison/*
 octopi_s/generate_qa_comparison.py
+octopi_s/quickstart_test.ipynb
