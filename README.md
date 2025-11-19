@@ -26,7 +26,7 @@ If you find this work helpful, please consider citing us:
 3. We recommend 17GiB max memory for each GPU for the two RTX 5000 Ada Generation GPUs in `configs/gpu_config.json`.
 
 ### Weights
-1. Download Octopi-1.5 	 [model weights](https://drive.google.com/file/d/1YMn6V5W-_qvDlCbVSdZiufe729BOEl-A/view?usp=sharing).
+1. Download Octopi-1.5 	 [model weights](https://drive.google.com/file/d/1awBk019Ad3xdcQ0thsFCCdCnoEYREcf9/view?usp=sharing).
 2. Unzip and put the weights in `octopi_s/data/` as `octopi_s/data/weights/`.
 
 
