@@ -303,7 +303,7 @@ def generate_scenario_qa(json_path, data_dir, num_samples, scenarios_to_use, ope
             existing[scenario].append(tuple(all_tactile))
         if num_objects == 1:
             question = ["Describe the object in the following tactile video(s).\n\n"]
-        else:a
+        else:
             question = ["Describe the objects in the following tactile videos and rank them in decreasing hardness and roughness.\n\n"]
         answer = []
         # Get object frames
